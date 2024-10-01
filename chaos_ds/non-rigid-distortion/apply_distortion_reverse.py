@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 np.random.seed(42)
 def main():
-    map_path = r"C:\Users\perez\Desktop\cargoseer\mrf-masters\chaos_ds\m0_map.npy"
+    map_path = r"C:\Users\perez\Desktop\masters\mri_research\code\python\mrf-masters\chaos_ds\m0_map.npy"
     m0_map = np.load(map_path)
 
     contour_mask = process_image(m0_map)

@@ -224,4 +224,26 @@ def main():
     print(f'Video saved as {video_filename}')
 
 if __name__ == '__main__':
-    main()
+
+    video_filename = 'distorted_m0_map_video_7.mp4'
+    video_fps = 40  # Frames per second
+
+    # Get list of image files
+    image_files = [os.path.join("output_images_7", f) for f in sorted(os.listdir("output_images_7")) if f.endswith('.png')]
+
+    # Read the first image to get the size
+    frame = cv2.imread(image_files[0])
+    height, width, layers = frame.shape
+
+    # Define the codec and create VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video = cv2.VideoWriter(video_filename, fourcc, video_fps, (width, height))
+
+    for image_file in image_files:
+        frame = cv2.imread(image_file)
+        video.write(frame)
+
+    video.release()
+    print(f'Video saved as {video_filename}')
+
+    # main()
