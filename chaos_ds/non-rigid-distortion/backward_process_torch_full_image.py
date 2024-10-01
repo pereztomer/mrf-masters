@@ -11,8 +11,8 @@ print(f"Using device: {device}")
 
 
 # PyTorch version of backward transformation for the entire image with vectorization
-def backward_transform_2d(control_points, transformations, q_prime_grid, initial_guess_grid, sigma=1, lr=0.1,
-                          num_iters=2000):
+def backward_transform_2d(control_points, transformations, q_prime_grid, initial_guess_grid, sigma=1, lr=2,
+                          num_iters=100):
     height, width, _ = q_prime_grid.shape
 
     # Flatten the grid of points (height*width x 2)
