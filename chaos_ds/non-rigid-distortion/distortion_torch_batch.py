@@ -152,46 +152,43 @@ def gaussian_weight_batch(q_batch, p, sigma=1):
 #
 #     return parameter_sequences
 
-from scipy.interpolate import CubicSpline
-
-
 def create_time_varying_transformations(control_points, width, height, l):
-    center_x, center_y = width // 2, height // 2  # Assuming the center is at the middle of the image
+    """
+    Generate smooth time-varying transformations for control points.
+
+    Args:
+        control_points (np.ndarray): Coordinates of control points (k x 2).
+        width (int): Image width.
+        height (int): Image height.
+        l (int): Number of time steps (length of transformation).
+
+    Returns:
+        List of parameter sequences for each control point.
+    """
+    center_x, center_y = width // 2, height // 2  # Assume the center of the image
     parameter_sequences = []
+    frequency = 2 * np.pi / l  # Frequency for smooth oscillations (full period within the time steps)
 
     for idx, point in enumerate(control_points):
+
         # Calculate direction to move outwards (based on the position relative to the center)
-        move_x = point[0] - center_x  # Horizontal distance from the center
-        move_y = point[1] - center_y  # Vertical distance from the center
+        move_x = center_x - point[0]   # Horizontal distance from the center
+        move_y = center_y - point[1]   # Vertical distance from the center
+        # # take sign of move_x and move_y
+        # dir_x = np.sign(move_x)
+        # dir_y = np.sign(move_y)
+        # Smooth periodic translation using sine wave
+        tx_seq = move_x*0.6 * np.sin(frequency * np.arange(l))  # Smooth oscillation for X translation
+        ty_seq = move_y*0.6 * np.sin(frequency * np.arange(l))  # Smooth oscillation for Y translation
 
-        # Outward movement: moving away from the center at t=0
-        tx_start = move_x * 0.1  # Reduced outward movement
-        ty_start = move_y * 0.1  # Reduced outward movement
-
-        # Return to original position at the end
-        tx_end = 0  # At the end, the point returns to its original position
-        ty_end = 0  # Same for vertical movement
-
-        # Generate smooth sequences over time using cubic splines for better transitions
-        t_seq = np.linspace(0, 1, l)
-        tx_seq = CubicSpline([0, 0.5, 1], [tx_start, tx_start * 0.5, tx_end])(t_seq)
-        ty_seq = CubicSpline([0, 0.5, 1], [ty_start, ty_start * 0.5, ty_end])(t_seq)
-
-        # Other transformation parameters can remain relatively static
-        sx_start, sy_start = 1.0, 1.0  # No scaling changes
-        theta_start = 0  # No rotation
-        shear_x_start, shear_y_start = 0, 0  # No shear
-
-        sx_end, sy_end = 1.0, 1.0  # Return to original scaling
-        theta_end = 0  # No rotation change
-        shear_x_end, shear_y_end = 0, 0  # Return to no shear
-
-        # Generate smooth sequences for other parameters (kept static here)
-        sx_seq = np.linspace(sx_start, sx_end, l)
-        sy_seq = np.linspace(sy_start, sy_end, l)
-        theta_seq = np.linspace(theta_start, theta_end, l)
-        shear_x_seq = np.linspace(shear_x_start, shear_x_end, l)
-        shear_y_seq = np.linspace(shear_y_start, shear_y_end, l)
+        # Apply very subtle periodic scaling and no rotation/shear
+        # sx_seq = 1.0 + 0.01 * np.sin(frequency * np.arange(l))  # Subtle scaling in X
+        sx_seq = np.ones(l)
+        # sy_seq = 1.0 + 0.01 * np.sin(frequency * np.arange(l))  # Subtle scaling in Y
+        sy_seq = np.ones(l)
+        theta_seq = np.zeros(l)  # No rotation
+        shear_x_seq = np.zeros(l)  # No shear in X
+        shear_y_seq = np.zeros(l)  # No shear in Y
 
         parameter_sequences.append({
             'sx': sx_seq,
@@ -204,7 +201,6 @@ def create_time_varying_transformations(control_points, width, height, l):
         })
 
     return parameter_sequences
-
 
 def process_images_batch(m0_map, output_dir, batch_size=4, l=250, sigma=25):
     """
@@ -281,6 +277,8 @@ def process_images_batch(m0_map, output_dir, batch_size=4, l=250, sigma=25):
 
     # Get list of image files
     image_files = [os.path.join(output_dir, f) for f in sorted(os.listdir(output_dir)) if f.endswith('.png')]
+
+    image_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
 
     # Read the first image to get the size
     frame = cv2.imread(image_files[0])
