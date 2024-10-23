@@ -105,6 +105,56 @@ def gaussian_weight_batch(q_batch, p, sigma=1):
     return torch.exp(-0.5 * (dist_batch ** 2) / sigma ** 2)
 
 
+# def create_time_varying_transformations(control_points, width, height, l):
+#     center_x, center_y = width // 2, height // 2  # Assuming the center is at the middle of the image
+#     parameter_sequences = []
+#
+#     for idx, point in enumerate(control_points):
+#         # Calculate direction to move outwards (based on the position relative to the center)
+#         move_x = point[0] - center_x  # Horizontal distance from the center
+#         move_y = point[1] - center_y  # Vertical distance from the center
+#
+#         # Outward movement: moving away from the center at t=0
+#         tx_start = move_x * 0.2  # 20% of the distance outward
+#         ty_start = move_y * 0.2  # 20% of the distance outward
+#
+#         # Return to original position at the end
+#         tx_end = 0  # At the end, the point returns to its original position
+#         ty_end = 0  # Same for vertical movement
+#
+#         # Other transformation parameters can remain relatively static
+#         sx_start, sy_start = 1.0, 1.0  # No scaling changes
+#         theta_start = 0  # No rotation
+#         shear_x_start, shear_y_start = 0, 0  # No shear
+#
+#         sx_end, sy_end = 1.0, 1.0  # Return to original scaling
+#         theta_end = 0  # No rotation change
+#         shear_x_end, shear_y_end = 0, 0  # Return to no shear
+#
+#         # Generate sequences over time
+#         sx_seq = np.linspace(sx_start, sx_end, l)
+#         sy_seq = np.linspace(sy_start, sy_end, l)
+#         theta_seq = np.linspace(theta_start, theta_end, l)
+#         shear_x_seq = np.linspace(shear_x_start, shear_x_end, l)
+#         shear_y_seq = np.linspace(shear_y_start, shear_y_end, l)
+#         tx_seq = np.linspace(tx_start, tx_end, l)
+#         ty_seq = np.linspace(ty_start, ty_end, l)
+#
+#         parameter_sequences.append({
+#             'sx': sx_seq,
+#             'sy': sy_seq,
+#             'theta': theta_seq,
+#             'shear_x': shear_x_seq,
+#             'shear_y': shear_y_seq,
+#             'tx': tx_seq,
+#             'ty': ty_seq
+#         })
+#
+#     return parameter_sequences
+
+from scipy.interpolate import CubicSpline
+
+
 def create_time_varying_transformations(control_points, width, height, l):
     center_x, center_y = width // 2, height // 2  # Assuming the center is at the middle of the image
     parameter_sequences = []
@@ -115,12 +165,17 @@ def create_time_varying_transformations(control_points, width, height, l):
         move_y = point[1] - center_y  # Vertical distance from the center
 
         # Outward movement: moving away from the center at t=0
-        tx_start = move_x * 0.2  # 20% of the distance outward
-        ty_start = move_y * 0.2  # 20% of the distance outward
+        tx_start = move_x * 0.1  # Reduced outward movement
+        ty_start = move_y * 0.1  # Reduced outward movement
 
         # Return to original position at the end
         tx_end = 0  # At the end, the point returns to its original position
         ty_end = 0  # Same for vertical movement
+
+        # Generate smooth sequences over time using cubic splines for better transitions
+        t_seq = np.linspace(0, 1, l)
+        tx_seq = CubicSpline([0, 0.5, 1], [tx_start, tx_start * 0.5, tx_end])(t_seq)
+        ty_seq = CubicSpline([0, 0.5, 1], [ty_start, ty_start * 0.5, ty_end])(t_seq)
 
         # Other transformation parameters can remain relatively static
         sx_start, sy_start = 1.0, 1.0  # No scaling changes
@@ -131,14 +186,12 @@ def create_time_varying_transformations(control_points, width, height, l):
         theta_end = 0  # No rotation change
         shear_x_end, shear_y_end = 0, 0  # Return to no shear
 
-        # Generate sequences over time
+        # Generate smooth sequences for other parameters (kept static here)
         sx_seq = np.linspace(sx_start, sx_end, l)
         sy_seq = np.linspace(sy_start, sy_end, l)
         theta_seq = np.linspace(theta_start, theta_end, l)
         shear_x_seq = np.linspace(shear_x_start, shear_x_end, l)
         shear_y_seq = np.linspace(shear_y_start, shear_y_end, l)
-        tx_seq = np.linspace(tx_start, tx_end, l)
-        ty_seq = np.linspace(ty_start, ty_end, l)
 
         parameter_sequences.append({
             'sx': sx_seq,
@@ -250,6 +303,6 @@ if __name__ == '__main__':
     m0_map_path = r"C:\Users\perez\Desktop\masters\mri_research\code\python\mrf-masters\chaos_ds\m0_map.npy"
     m0_map = np.load(m0_map_path)
 
-    output_dir = 'output_images_batch_time'
+    output_dir = r'C:\Users\perez\Desktop\masters\mri_research\datasets\distortion_dataset'
     process_images_batch(m0_map, output_dir, batch_size=64, l=250, sigma=25)
 
