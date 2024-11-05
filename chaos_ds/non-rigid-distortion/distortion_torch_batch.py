@@ -152,7 +152,7 @@ def gaussian_weight_batch(q_batch, p, sigma=1):
 #
 #     return parameter_sequences
 
-def create_time_varying_transformations(control_points, width, height, l):
+def create_time_varying_transformations(control_points, width, height,wavelength, seq_length):
     """
     Generate smooth time-varying transformations for control points.
 
@@ -160,14 +160,16 @@ def create_time_varying_transformations(control_points, width, height, l):
         control_points (np.ndarray): Coordinates of control points (k x 2).
         width (int): Image width.
         height (int): Image height.
-        l (int): Number of time steps (length of transformation).
+        wavelength (int): l is the distance over which the wave's shape repeats.
+        seq_length (int): Number of time steps in the sequence.
 
     Returns:
         List of parameter sequences for each control point.
     """
+    assert seq_length <= wavelength, "Sequence length must be shorter or equal than or equal to the wavelength."
     center_x, center_y = width // 2, height // 2  # Assume the center of the image
     parameter_sequences = []
-    frequency = 2 * np.pi / l  # Frequency for smooth oscillations (full period within the time steps)
+    frequency = 2 * np.pi / wavelength  # Frequency for smooth oscillations (full period within the time steps)
 
     for idx, point in enumerate(control_points):
 
@@ -178,17 +180,17 @@ def create_time_varying_transformations(control_points, width, height, l):
         # dir_x = np.sign(move_x)
         # dir_y = np.sign(move_y)
         # Smooth periodic translation using sine wave
-        tx_seq = move_x*0.6 * np.sin(frequency * np.arange(l))  # Smooth oscillation for X translation
-        ty_seq = move_y*0.6 * np.sin(frequency * np.arange(l))  # Smooth oscillation for Y translation
+        tx_seq = move_x*0.6 * np.sin(frequency * np.arange(wavelength))[:seq_length]  # Smooth oscillation for X translation
+        ty_seq = move_y*0.6 * np.sin(frequency * np.arange(wavelength))[:seq_length]  # Smooth oscillation for Y translation
 
         # Apply very subtle periodic scaling and no rotation/shear
         # sx_seq = 1.0 + 0.01 * np.sin(frequency * np.arange(l))  # Subtle scaling in X
-        sx_seq = np.ones(l)
+        sx_seq = np.ones(wavelength)[:seq_length]
         # sy_seq = 1.0 + 0.01 * np.sin(frequency * np.arange(l))  # Subtle scaling in Y
-        sy_seq = np.ones(l)
-        theta_seq = np.zeros(l)  # No rotation
-        shear_x_seq = np.zeros(l)  # No shear in X
-        shear_y_seq = np.zeros(l)  # No shear in Y
+        sy_seq = np.ones(wavelength)[:seq_length]
+        theta_seq = np.zeros(wavelength)[:seq_length]  # No rotation
+        shear_x_seq = np.zeros(wavelength)[:seq_length]  # No shear in X
+        shear_y_seq = np.zeros(wavelength)[:seq_length]  # No shear in Y
 
         parameter_sequences.append({
             'sx': sx_seq,
@@ -202,7 +204,7 @@ def create_time_varying_transformations(control_points, width, height, l):
 
     return parameter_sequences
 
-def process_images_batch(m0_map, output_dir, batch_size=4, l=250, sigma=25):
+def process_images_batch(m0_map, output_dir,seq_len, batch_size=4, l=250, sigma=25):
     """
     Process time-varying images in batches on GPU.
     """
@@ -213,11 +215,15 @@ def process_images_batch(m0_map, output_dir, batch_size=4, l=250, sigma=25):
     control_points, _, _ = select_random_points_within_contour(m0_map, contour_mask)
 
     # Prepare parameter sequences for each control point over time
-    parameter_sequences = create_time_varying_transformations(control_points, width, height, l)
+    parameter_sequences = create_time_varying_transformations(control_points,
+                                                              width,
+                                                              height,
+                                                              seq_length=seq_len,
+                                                              wavelength=l)
 
     # Process the full time series in chunks (batch by batch)
-    for batch_start in range(0, l, batch_size):
-        current_batch_size = min(batch_size, l - batch_start)  # Adjust for the last smaller batch
+    for batch_start in range(0, seq_len, batch_size):
+        current_batch_size = min(batch_size, seq_len - batch_start)  # Adjust for the last smaller batch
         transformations_batch = []
 
         # Prepare transformations for the current batch
@@ -267,40 +273,45 @@ def process_images_batch(m0_map, output_dir, batch_size=4, l=250, sigma=25):
                     if 0 <= q[0] < height and 0 <= q[1] < width:
                         new_image[i, j] = m0_map[q[0], q[1]]
 
-            # Save the final image
-            plt.imsave(f"{output_dir}/distorted_m0_map_{batch_start + batch_idx}.png", new_image, cmap='gray', vmin=0, vmax=1)
+            # save recovered_q as npy
+            np.save(f"{output_dir}/registration_map_{batch_start + batch_idx}.npy", recovered_q)
+            # save image as numpy
+            np.save(f"{output_dir}/distorted_m0_map_{batch_start + batch_idx}.npy", new_image)
+            # # Save the final image
+            # plt.imsave(f"{output_dir}/distorted_m0_map_{batch_start + batch_idx}.png", new_image, cmap='gray', vmin=0, vmax=1)
 
         print(f"Processed and saved images for batch starting from time step {batch_start}.")
 
-    video_filename = os.path.join(output_dir, 'distorted_m0_map_video.mp4')
-    video_fps = 24  # Frames per second
-
-    # Get list of image files
-    image_files = [os.path.join(output_dir, f) for f in sorted(os.listdir(output_dir)) if f.endswith('.png')]
-
-    image_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
-
-    # Read the first image to get the size
-    frame = cv2.imread(image_files[0])
-    height, width, layers = frame.shape
-
-    # Define the codec and create VideoWriter object
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video = cv2.VideoWriter(video_filename, fourcc, video_fps, (width, height))
-
-    for image_file in image_files:
-        frame = cv2.imread(image_file)
-        video.write(frame)
-
-    video.release()
-    print(f'Video saved as {video_filename}')
+    # video_filename = os.path.join(output_dir, 'distorted_m0_map_video.mp4')
+    # video_fps = 24  # Frames per second
+    #
+    # # Get list of image files
+    # image_files = [os.path.join(output_dir, f) for f in sorted(os.listdir(output_dir)) if f.endswith('.png')]
+    #
+    # image_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
+    #
+    # # Read the first image to get the size
+    # frame = cv2.imread(image_files[0])
+    # height, width, layers = frame.shape
+    #
+    # # Define the codec and create VideoWriter object
+    # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # video = cv2.VideoWriter(video_filename, fourcc, video_fps, (width, height))
+    #
+    # for image_file in image_files:
+    #     frame = cv2.imread(image_file)
+    #     video.write(frame)
+    #
+    # video.release()
+    # print(f'Video saved as {video_filename}')
 
 
 if __name__ == '__main__':
+    # this is the full last motion simulation!
     # Single m0_map
     m0_map_path = r"C:\Users\perez\Desktop\masters\mri_research\code\python\mrf-masters\chaos_ds\m0_map.npy"
     m0_map = np.load(m0_map_path)
 
-    output_dir = r'C:\Users\perez\Desktop\masters\mri_research\datasets\distortion_dataset'
-    process_images_batch(m0_map, output_dir, batch_size=64, l=250, sigma=25)
+    output_dir = r'C:\Users\perez\Desktop\masters\mri_research\datasets\distortion_dataset_8'
+    process_images_batch(m0_map, output_dir,seq_len=100, batch_size=64, sigma=25)
 

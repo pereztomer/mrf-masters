@@ -25,9 +25,9 @@ def fit_t1_map(image1, image2, flip_angle1, flip_angle2, tr):
     for i in range(image1.shape[0]):
         for j in range(image1.shape[1]):
             si = np.array([image1[i, j], image2[i, j]])
-            if si[0] > 0 and si[1] > 0:
-                print("here")
-                print(si)
+            # if si[0] > 0 and si[1] > 0:
+            #     print("here")
+            #     print(si)
             angles = np.array([flip_angle1, flip_angle2])
             try:
                 popt, _ = curve_fit(lambda x, T1, M0: spgr_signal(x, T1, M0, tr), angles, si, p0=[1000, 1])

@@ -8,6 +8,11 @@ from find_countor import process_image
 # Function to generate T1, T2, and M0 maps
 import numpy as np
 
+"""
+####################################
+This script generates synthetic T1, T2, and M0 maps from a set of labeled masks and an unknown image!!!!!!!!!!!!!!!!
+####################################
+"""
 def generate_maps(labels, default_values, unknown_image, background_mask):
     shape = next(iter(labels.values())).shape  # Get the shape from one of the masks
     t1_map = np.zeros(shape, dtype=np.float32)

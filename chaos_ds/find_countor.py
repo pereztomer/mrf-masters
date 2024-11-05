@@ -8,7 +8,7 @@ import cv2
 from scipy.spatial import cKDTree
 
 
-def process_image(image):
+def process_image(image, plot=False):
     # Apply a threshold to create a binary image
     threshold_value = filters.threshold_otsu(image)
     binary_image = image > threshold_value
@@ -19,15 +19,15 @@ def process_image(image):
 
     # Find contours (optional for visualization)
     contours = measure.find_contours(cleaned_image, level=0.8)
-
-    # Display the original image with contours (optional)
-    plt.figure(figsize=(8, 8))
-    plt.imshow(image, cmap='viridis')
-    for contour in contours:
-        plt.plot(contour[:, 1], contour[:, 0], linewidth=2, color='red')
-    plt.title('Contours of the Organ')
-    plt.axis('off')
-    plt.show()
+    if plot:
+        # Display the original image with contours (optional)
+        plt.figure(figsize=(8, 8))
+        plt.imshow(image, cmap='viridis')
+        for contour in contours:
+            plt.plot(contour[:, 1], contour[:, 0], linewidth=2, color='red')
+        plt.title('Contours of the Organ')
+        plt.axis('off')
+        plt.show()
 
     return cleaned_image
 
