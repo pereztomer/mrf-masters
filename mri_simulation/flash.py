@@ -8,6 +8,7 @@ Original file is located at
 """
 
 import MRzeroCore as mr0
+import MRzeroCore
 import matplotlib.pyplot as plt
 from numpy import pi
 import torch
@@ -21,6 +22,7 @@ This Notebook demonstrates a simple Fast Low Angle SHot sequence (FLASH). It is 
 Always prefer to write a function that builds the sequence that takes all variables of interest (often flip angles, TE, TR and/or others) as arguments. This way one can easily build variations of the sequence or optimize the arguments with gradient descent when using pyTorch tensors for all variables.
 """
 
+
 def build_seq() -> mr0.Sequence:
     seq = mr0.Sequence()
 
@@ -29,8 +31,8 @@ def build_seq() -> mr0.Sequence:
     for i in range(64):
         rep = seq.new_rep(2 + 64 + 1)
         rep.pulse.usage = mr0.PulseUsage.EXCIT
-        rep.pulse.angle = 7 * pi/180
-        rep.pulse.phase = 0.5 * 137.50776405 * (i**2+i+2) * pi / 180
+        rep.pulse.angle = 7 * pi / 180
+        rep.pulse.phase = 0.5 * 137.50776405 * (i ** 2 + i + 2) * pi / 180
 
         rep.event_time[0] = 2e-3  # Pulse
         rep.event_time[1] = 2e-3  # Rewinder
@@ -52,6 +54,7 @@ def build_seq() -> mr0.Sequence:
 
     return seq
 
+
 # Build the default FLASH and show the kspace
 seq = build_seq()
 seq.plot_kspace_trajectory()
@@ -67,8 +70,31 @@ for rep in seq:
 # https://github.com/MRsources/MRzero-Core/raw/main/documentation/examples/subject05.npz
 
 # read numpy file
-test = np.load('subject05.npz')
-phantom = mr0.VoxelGridPhantom.brainweb("subject05.npz")
+data_from_phantom = np.load('subject05.npz')
+
+# convert all key from numpy to tensor
+data_from_phantom = {k: torch.tensor(v) for k, v in data_from_phantom.items()}
+
+print("heer")
+# phantom = mr0.VoxelGridPhantom(PD=data_from_phantom['PD_map'],
+#                      T1=data_from_phantom['T1_map'],
+#                      T2=data_from_phantom['T2_map'],
+#                      T2dash=data_from_phantom['T2dash_map'],
+#                      D=data_from_phantom['D_map'])
+
+from MRzeroCore.phantom.voxel_grid_phantom import generate_B0_B1
+B0, B1 = generate_B0_B1(data_from_phantom['PD_map'])
+phantom = mr0.VoxelGridPhantom(PD=data_from_phantom['PD_map'],
+                               T1=data_from_phantom['T1_map'],
+                               T2=data_from_phantom['T2_map'],
+                               T2dash=data_from_phantom['T2dash_map'],
+                               D=data_from_phantom['D_map'],
+                               B0=B0,
+                               B1=B1,
+                               coil_sens=data_from_phantom['D_map'],
+                               size=torch.tensor([0.192, 0.192, 0.192]))
+
+phantom = mr0.VoxelGridPhantom.load("subject05.npz")
 phantom = phantom.interpolate(64, 64, 32).slices([16])
 # The default fov is loaded from the data, but we can change it:
 phantom.size = torch.tensor([0.15, 0.15, 1])
@@ -81,7 +107,7 @@ def phantom_motion(time: torch.tensor) -> tuple[torch.tensor, torch.tensor]:
     time /= 0.712  # Sequence duration
 
     phi = 0.8 * time
-    x = -0.03 * time**2
+    x = -0.03 * time ** 2
     y = 0 * time
 
     phi = torch.as_tensor(phi)
@@ -120,6 +146,7 @@ plt.imshow(reco.abs().cpu()[:, :, 0].T, origin='lower', vmin=0)
 plt.subplot(122)
 plt.title("Phase")
 import numpy as np
+
 plt.imshow(reco.angle().cpu()[:, :, 0].T, origin='lower', vmin=-np.pi, vmax=np.pi, cmap="twilight")
 plt.show()
 
