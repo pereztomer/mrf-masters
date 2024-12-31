@@ -73,8 +73,9 @@ if __name__ == "__main__":
     image_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if "distorted" in f and f.endswith('.npy')]
     image_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
     # map files via their number
-
-    for im_path, registration_path in zip(image_files, registration_map_files):
+    dest_folder = r"C:\Users\perez\Desktop\masters\mri_research\datasets\Chaos processed\temp_2"
+    os.makedirs(dest_folder, exist_ok=True)
+    for idx, (im_path, registration_path) in enumerate(zip(image_files, registration_map_files)):
         image = np.load(original_map)
         registration_map = np.load(registration_path)  # Load registration map
         # convert to torch tensors
@@ -84,10 +85,37 @@ if __name__ == "__main__":
         # convert to numpy
         deformed_image_from_torch = deformed_image_torch.cpu().numpy()
         deformed_image = deform_image(image, registration_map)
-        # calc diff
-        deformed_from_torch = np.load(im_path)
-        diff = np.linalg.norm(deformed_image - deformed_from_torch)
-        print(f"Mean absolute difference: {diff}")
-        diff_2 = np.linalg.norm(deformed_image_from_torch - deformed_from_torch)
-        print(f"Mean absolute difference: {diff_2}")
-        print("\n\n\n")
+        # save the deformed image as png
+        plt.imsave(os.path.join(dest_folder, f"deformed_magnitude_{idx}.png"), deformed_image, cmap='gray')
+        # # calc diff
+        # deformed_from_torch = np.load(im_path)
+        # diff = np.linalg.norm(deformed_image - deformed_from_torch)
+        # print(f"Mean absolute difference: {diff}")
+        # diff_2 = np.linalg.norm(deformed_image_from_torch - deformed_from_torch)
+        # print(f"Mean absolute difference: {diff_2}")
+        # print("\n\n\n")
+
+    video_filename = os.path.join(dest_folder, 'test.mp4')
+    video_fps = 24  # Frames per second
+
+    # Get list of image files
+    image_files = [os.path.join(dest_folder, f) for f in sorted(os.listdir(dest_folder)) if
+                   f.endswith('.png') and 'deformed_magnitude' in f]
+
+    image_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
+
+    # Read the first image to get the size
+    frame = cv2.imread(image_files[0])
+    height, width, layers = frame.shape
+
+    # Define the codec and create VideoWriter object
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video = cv2.VideoWriter(video_filename, fourcc, video_fps, (width, height))
+
+    for image_file in image_files:
+        frame = cv2.imread(image_file)
+        video.write(frame)
+
+    video.release()
+    print(f'Video saved as {video_filename}')
+

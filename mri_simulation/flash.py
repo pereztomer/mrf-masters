@@ -75,7 +75,7 @@ data_from_phantom = np.load('subject05.npz')
 # convert all key from numpy to tensor
 data_from_phantom = {k: torch.tensor(v) for k, v in data_from_phantom.items()}
 
-print("heer")
+# print("heer")
 # phantom = mr0.VoxelGridPhantom(PD=data_from_phantom['PD_map'],
 #                      T1=data_from_phantom['T1_map'],
 #                      T2=data_from_phantom['T2_map'],
@@ -94,10 +94,12 @@ phantom = mr0.VoxelGridPhantom(PD=data_from_phantom['PD_map'],
                                coil_sens=data_from_phantom['D_map'],
                                size=torch.tensor([0.192, 0.192, 0.192]))
 
+
 phantom = mr0.VoxelGridPhantom.load("subject05.npz")
 phantom = phantom.interpolate(64, 64, 32).slices([16])
+# phantom = phantom.slices([16])
 # The default fov is loaded from the data, but we can change it:
-phantom.size = torch.tensor([0.15, 0.15, 1])
+# phantom.size = torch.tensor([0.15, 0.15, 1])
 
 phantom.plot()
 data = phantom.build()
@@ -129,7 +131,7 @@ def phantom_motion(time: torch.tensor) -> tuple[torch.tensor, torch.tensor]:
     return rot, offset
 
 
-data.phantom_motion = phantom_motion
+# data.phantom_motion = phantom_motion
 
 # Simulate the sequence
 
@@ -137,20 +139,214 @@ graph = mr0.compute_graph(seq, data)
 signal = mr0.execute_graph(graph, seq, data)
 reco = mr0.reco_adjoint(signal, seq.get_kspace())
 
-# Plot the result
+
+
 
 plt.figure()
 plt.subplot(121)
 plt.title("Magnitude")
-plt.imshow(reco.abs().cpu()[:, :, 0].T, origin='lower', vmin=0)
+plt.imshow(reco.abs().cpu()[:, :, 0].T.T.T, origin='lower', vmin=0, cmap='gray')
 plt.subplot(122)
 plt.title("Phase")
-import numpy as np
-
-plt.imshow(reco.angle().cpu()[:, :, 0].T, origin='lower', vmin=-np.pi, vmax=np.pi, cmap="twilight")
+plt.imshow(reco.angle().cpu()[:, :, 0].T.T.T, origin='lower', vmin=-np.pi, vmax=np.pi, cmap="twilight")
 plt.show()
-
 plt.figure(figsize=(7, 5), dpi=120)
 graph.plot()
 plt.grid()
+plt.show()
+
+def radial_sampling(kspace, num_lines):
+    """
+    Radially sample the given k-space tensor.
+
+    Args:
+        kspace (torch.Tensor): The k-space data as a complex tensor of shape [H, W].
+        num_lines (int): The number of radial lines to sample.
+
+    Returns:
+        torch.Tensor: The radially sampled k-space tensor.
+    """
+    # Get the dimensions of the k-space
+    H, W = kspace.shape
+    center = (H // 2, W // 2)
+
+    # Create an empty mask for sampling
+    mask = torch.zeros((H, W), dtype=torch.bool)
+
+    # Generate radial lines
+    angles = np.linspace(0, np.pi, num_lines, endpoint=False)
+    for angle in angles:
+        # Calculate the direction vector for the given angle
+        direction = np.array([np.cos(angle), np.sin(angle)])
+
+        # Sample points along the line passing through the center
+        for t in np.linspace(-max(H, W) // 2, max(H, W) // 2, max(H, W)):
+            x = int(center[0] + t * direction[0])
+            y = int(center[1] + t * direction[1])
+
+            # Ensure the coordinates are within bounds
+            if 0 <= x < H and 0 <= y < W:
+                mask[x, y] = True
+
+    # Apply the mask to the k-space to get the sampled k-space
+    sampled_kspace = torch.zeros_like(kspace)
+    sampled_kspace[mask] = kspace[mask]
+
+    return sampled_kspace
+
+
+# def spiral_sampling(kspace, num_points):
+#     """
+#     Spirally sample the given k-space tensor.
+#
+#     Args:
+#         kspace (torch.Tensor): The k-space data as a complex tensor of shape [H, W].
+#         num_points (int): The number of points along the spiral trajectory.
+#
+#     Returns:
+#         torch.Tensor: The spirally sampled k-space tensor.
+#     """
+#     # Get the dimensions of the k-space
+#     H, W = kspace.shape
+#     center = (H // 2, W // 2)
+#
+#     # Create an empty mask for sampling
+#     mask = torch.zeros((H, W), dtype=torch.bool)
+#
+#     # Generate a single continuous spiral trajectory
+#     theta_max = 12 * np.pi  # Increase the number of turns for a denser spiral
+#     for t in np.linspace(0, theta_max, num_points):
+#         r = (t / theta_max) * (min(H, W) // 2)  # Radius grows linearly with t
+#         x = int(center[0] + r * np.cos(t))
+#         y = int(center[1] + r * np.sin(t))
+#
+#         # Ensure the coordinates are within bounds
+#         if 0 <= x < H and 0 <= y < W:
+#             mask[x, y] = True
+#
+#     # Apply the mask to the k-space to get the sampled k-space
+#     sampled_kspace = torch.zeros_like(kspace)
+#     sampled_kspace[mask] = kspace[mask]
+#
+#     return sampled_kspace
+
+
+def spiral_sampling2(kspace, num_points):
+    """
+    Spirally sample the given k-space tensor.
+
+    Args:
+        kspace (torch.Tensor): The k-space data as a complex tensor of shape [H, W].
+        num_points (int): The number of points along the spiral trajectory.
+
+    Returns:
+        torch.Tensor: The spirally sampled k-space tensor.
+    """
+    # Get the dimensions of the k-space
+    H, W = kspace.shape
+    center = (H // 2, W // 2)
+
+    # Create an empty mask for sampling
+    mask = torch.zeros((H, W), dtype=torch.bool)
+
+    # Generate a single continuous spiral trajectory with increasing spacing
+    theta_max = 12 * np.pi  # Increase the number of turns for a denser spiral
+    a = 2  # Controls the rate at which the gap between turns increases
+    for t in np.linspace(0, theta_max, num_points):
+        r = a * t  # Radius grows with t, and a controls the gap increase
+        x = int(center[0] + r * np.cos(t))
+        y = int(center[1] + r * np.sin(t))
+
+        # Ensure the coordinates are within bounds
+        if 0 <= x < H and 0 <= y < W:
+            mask[x, y] = True
+
+    # Apply the mask to the k-space to get the sampled k-space
+    sampled_kspace = torch.zeros_like(kspace)
+    sampled_kspace[mask] = kspace[mask]
+
+    return sampled_kspace
+
+
+def spiral_sampling3(kspace, num_points):
+    """
+    Spirally sample the given k-space tensor.
+
+    Args:
+        kspace (torch.Tensor): The k-space data as a complex tensor of shape [H, W].
+        num_points (int): The number of points along the spiral trajectory.
+
+    Returns:
+        torch.Tensor: The spirally sampled k-space tensor.
+    """
+    # Get the dimensions of the k-space
+    H, W = kspace.shape
+    center = (H // 2, W // 2)
+
+    # Create an empty mask for sampling
+    mask = torch.zeros((H, W), dtype=torch.bool)
+
+    # Generate a single continuous spiral trajectory with variable spacing
+    theta_max = 12 * np.pi  # Increase the number of turns for a denser spiral
+    a = 0.096  # Controls the rate at which the gap between turns increases
+    b = 0.01 # Controls the density of points at the center
+    for t in np.linspace(0, theta_max, num_points):
+        # r = np.exp((a + b * t)) * t  # Radius grows with t, with denser points near the center
+        r = np.exp(a * t)  # Radius grows with t, with denser points near the center
+        x = int(center[0] + r * np.cos(t))
+        y = int(center[1] + r * np.sin(t))
+
+        # Ensure the coordinates are within bounds
+        if 0 <= x < H and 0 <= y < W:
+            mask[x, y] = True
+
+    # Apply the mask to the k-space to get the sampled k-space
+    sampled_kspace = torch.zeros_like(kspace)
+    sampled_kspace[mask] = kspace[mask]
+
+    return sampled_kspace
+
+# squise access dim
+reco = reco.squeeze(2)
+kspace = torch.fft.fft2(reco)
+
+# Optionally, you may want to shift the zero-frequency component to the center
+kspace_shifted = torch.fft.fftshift(kspace)
+
+
+sampled_kspace = spiral_sampling3(kspace_shifted, num_points=5000)
+
+# Plot the sampled k-space
+kspace_magnitude = torch.abs(sampled_kspace)
+kspace_log_magnitude = torch.log(1 + kspace_magnitude)
+
+plt.figure(figsize=(8, 8))
+plt.imshow(kspace_log_magnitude.numpy(), cmap='gray')
+plt.title('Radially Sampled K-Space (Log Magnitude)')
+plt.axis('off')
+plt.show()
+
+# Perform inverse FFT to get the image domain representation
+reconstructed_image = torch.fft.ifftshift(sampled_kspace)
+reconstructed_image = torch.fft.ifft2(reconstructed_image)
+
+# Calculate magnitude and phase of the reconstructed image
+image_magnitude = torch.abs(reconstructed_image)
+image_phase = torch.angle(reconstructed_image)
+
+# Plot the magnitude and phase of the reconstructed image
+plt.figure(figsize=(12, 6))
+
+plt.subplot(1, 2, 1)
+# plt.imshow(image_magnitude.numpy().T,origin='lower', vmin=0)
+plt.imshow(image_magnitude.numpy().T.T.T,cmap='gray')
+plt.title('Image (Magnitude)')
+plt.axis('off')
+
+plt.subplot(1, 2, 2)
+# plt.imshow(image_phase.numpy().T,  origin='lower', vmin=-np.pi, vmax=np.pi, cmap="twilight")
+plt.imshow(image_phase.numpy().T.T.T,  cmap="gray")
+plt.title('Image (Phase)')
+plt.axis('off')
+
 plt.show()
