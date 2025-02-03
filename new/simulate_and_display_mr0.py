@@ -3,7 +3,7 @@ import pypulseq as pp
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
-from research_sequences_from_scratch.convert_raw_data_to_kspace import grid_kspace_2d
+from convert_raw_data_to_kspace import grid_kspace_2d
 import matplotlib
 matplotlib.use('TkAgg')
 
@@ -11,7 +11,7 @@ np.int = int
 np.float = float
 np.complex = complex
 def main():
-    seq_file = r"C:\Users\perez\Desktop\masters\mri_research\code\python\mrf-masters\research_sequences_from_scratch\epi\epi_with_acceleration_and_half_fourier\epi_pypulseq_acceleration_R_1_half_fourier_True.seq"
+    seq_file = "epi_pypulseq_acceleration_R_1_half_fourier_True.seq"
     plt.rcParams['figure.figsize'] = [10, 5]
     plt.rcParams['figure.dpi'] = 100  # 200 e.g. is really fine, but slower
     seq = pp.Sequence()
