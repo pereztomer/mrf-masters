@@ -307,11 +307,8 @@ def detectPFdim(smplPtrn, wasAddedCoilDim):
         repRule[d] = 1
 
         isPartialFourier[d] = np.array_equal(smplPtrn, np.tile(oneCol, repRule))
-
-        isPartialFourier[d] = np.array_equal(smplPtrn, np.tile(oneCol, repRule))
-        plt.imshow(smplPtrn - np.tile(oneCol, repRule))
+        plt.imshow(smplPtrn-np.tile(oneCol, repRule))
         plt.show()
-
         if isPartialFourier[d]:
             pfDim = d
             numSamples = np.count_nonzero(oneCol)

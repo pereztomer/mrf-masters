@@ -19,14 +19,10 @@ fov = 220e-3
 Nx = 128
 Ny = 128
 TE = 10e-3
-use_partial_fourier = False
-partial_fourier_fraction = 1
-if use_partial_fourier:
-    partial_fourier_fraction = 9 / 16
-
+use_partial_fourier = True
+partial_fourier_fraction = 9 / 16
 
 seq_filename = f'epi_pypulseq_Nx_{Nx}_Ny_{Ny}_acceleration_R_{R}_half_fourier_{use_partial_fourier}.seq'
-Ny = int(Ny * 1 / R)
 
 slice_thickness = 3e-3  # Slice thickness
 n_slices = 1
@@ -84,7 +80,8 @@ print("delta_k: ", delta_k)
 print("Ny: ", Ny)
 # Phase blip in the shortest possible time
 dur = np.ceil(2 * np.sqrt(delta_k / system.max_slew) / 10e-6) * 10e-6
-gy = pp.make_trapezoid(channel='y', system=system, area=delta_k, duration=dur * R)
+gy_acceleration_jump = pp.make_trapezoid(channel='y', system=system, area=delta_k*R, duration=dur*R)
+gy_for_dc = pp.make_trapezoid(channel='y', system=system, area=delta_k, duration=dur)
 
 # ======
 # CONSTRUCT SEQUENCE
@@ -94,9 +91,20 @@ for s in range(n_slices):
     rf.freq_offset = gz.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
     seq.add_block(rf, gz)
     seq.add_block(gx_pre, gy_pre, gz_reph)
-    for i in range(int(Ny*partial_fourier_fraction)):
+    i = 0
+    for _ in range(Ny):
         seq.add_block(gx, adc)  # Read one line of k-space
-        seq.add_block(gy)  # Phase blip
+        if i < int(Ny * 0.5 - 10) or i > int(Ny * 0.5 + 10):
+            seq.add_block(gy_acceleration_jump)  # Phase blip
+            i += R
+        else:
+            seq.add_block(gy_for_dc)  # Phase blip
+            i += 1
+
+        if i > Ny:
+            break
+        if use_partial_fourier and i > Ny * partial_fourier_fraction:
+            break
         gx.amplitude = -gx.amplitude  # Reverse polarity of read gradient
 
 ok, error_report = seq.check_timing()

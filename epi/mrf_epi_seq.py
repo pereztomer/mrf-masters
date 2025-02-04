@@ -3,7 +3,8 @@ import MRzeroCore as mr0
 import pypulseq as pp
 import torch
 import matplotlib.pyplot as plt
-
+import matplotlib
+matplotlib.use('TkAgg')
 # Setup system limits
 system = pp.Opts(
     max_grad=28, grad_unit='mT/m',
@@ -23,7 +24,7 @@ slice_thickness = 8e-3
 Nread = 64
 Nphase = 64
 partial_factor = 9 / 16
-R = 2  # Acceleration factor
+R = 1  # Acceleration factor
 
 # Calculate number of lines to acquire with partial Fourier and acceleration
 lines_to_acquire = int(Nphase * partial_factor / R)  # Divided by R for acceleration
@@ -161,6 +162,8 @@ import scipy.io
 
 # convert to numpy:
 kspace = kspace.numpy()
+# plt.imshow(np.log(np.abs(kspace) + 1))
+# plt.show()
 from partial_fourier_recon import pocs_pf
 kspace = pocs_pf(kspace, 10)
 # kspFull_kxkycz, kspZpad_kxkycz = partial_fourier_recon.pf_recon_pocs_ms2d(kspace, 10)
