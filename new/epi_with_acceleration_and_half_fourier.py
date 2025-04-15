@@ -12,14 +12,14 @@ write_seq = True
 # ======
 # SETUP
 # ======
-R = 4
+R = 2
 seq = pp.Sequence()  # Create a new sequence object
 # Define FOV and resolution
 fov = 220e-3
 Nx = 128
 Ny = 128
 TE = 10e-3
-use_partial_fourier = False
+use_partial_fourier = True
 partial_fourier_fraction = 1
 if use_partial_fourier:
     partial_fourier_fraction = 9 / 16

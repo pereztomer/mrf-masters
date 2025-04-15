@@ -27,7 +27,8 @@ def generate_coil_maps(matrix_size, num_coils, coil_positions=None):
     xx, yy = np.meshgrid(x, y)
 
     maps = np.zeros((num_coils, matrix_size[0], matrix_size[1]))
-    decay_factor = 2/3 * matrix_size[0]  # Increased for wider sensitivity profiles
+    # orginal: decay_factor = 2/3 * matrix_size[0]  # Increased for wider sensitivity profiles,
+    decay_factor = 1/2 * matrix_size[0]  # Increased for wider sensitivity profiles, orginal
 
     for i, (coil_x, coil_y) in enumerate(coil_positions):
         distance = np.sqrt((xx - coil_x) ** 2 + (yy - coil_y) ** 2)
@@ -63,7 +64,14 @@ def visualize_maps(maps):
     plt.show()
 
 
+def apply_coil_sensitivity_maps(image, coils):
+    images = []
+    for idx, coil in enumerate(coils):
+        images.append(image * coil)
+
+    return np.stack(images)
+
 # Example usage:
 if __name__ == "__main__":
-    maps = generate_coil_maps((32, 32), 8)
+    maps = generate_coil_maps((128, 128), 8)
     visualize_maps(maps)

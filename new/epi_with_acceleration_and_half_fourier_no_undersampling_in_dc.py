@@ -12,7 +12,7 @@ write_seq = True
 # ======
 # SETUP
 # ======
-R = 4
+R = 2
 seq = pp.Sequence()  # Create a new sequence object
 # Define FOV and resolution
 fov = 220e-3
@@ -29,9 +29,9 @@ n_slices = 1
 
 # Set system limits
 system = pp.Opts(
-    max_grad=32,
+    max_grad=60,
     grad_unit='mT/m',
-    max_slew=130,
+    max_slew=160,
     slew_unit='T/m/s',
     rf_ringdown_time=30e-6,
     rf_dead_time=100e-6,

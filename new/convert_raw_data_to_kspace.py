@@ -72,6 +72,19 @@ def grid_kspace_2d(values, coordinates,crop_frequencies=False,half_fourier=False
     grid.abs().numpy()
 
     grid[min_y_index:max_y_index+1, min_x_index:max_x_index+1] = 1e-9
+
+    grid_2 = torch.zeros(grid_size, dtype=torch.complex64)
+    grid_2[min_y_index:max_y_index + 1, min_x_index:max_x_index + 1] = 1e-9
+
+    grid_3 = torch.zeros(grid_size, dtype=torch.complex64)
+    grid_3[min_y_index:max_y_index + 1, min_x_index:max_x_index + 1] = 1e-9
+
+    grid_4 = torch.zeros(grid_size, dtype=torch.complex64)
+    grid_4[min_y_index:max_y_index + 1, min_x_index:max_x_index + 1] = 1e-9
+
+    grid_5 = torch.zeros(grid_size, dtype=torch.complex64)
+    grid_5[min_y_index:max_y_index + 1, min_x_index:max_x_index + 1] = 1e-9
+
     # Ensure indices are within bounds
     x_indices = torch.clamp(x_indices, 0, grid_size[1] - 1)
     y_indices = torch.clamp(y_indices, 0, grid_size[0] - 1)
@@ -81,7 +94,63 @@ def grid_kspace_2d(values, coordinates,crop_frequencies=False,half_fourier=False
     indices = torch.stack([y_indices, x_indices], dim=1)
 
     for sample_num, (x_coord, y_coord) in enumerate(indices):
-        grid[x_coord, y_coord] = values[sample_num]
+        if grid[x_coord, y_coord] == 1e-9:
+            grid[x_coord, y_coord] = values[sample_num]
+        elif grid_2[x_coord, y_coord] == 1e-9:
+            grid_2[x_coord, y_coord] = values[sample_num]
+        elif grid_3[x_coord, y_coord] == 1e-9:
+            grid_3[x_coord, y_coord] = values[sample_num]
+        elif grid_4[x_coord, y_coord] == 1e-9:
+            grid_4[x_coord, y_coord] = values[sample_num]
+        elif grid_5[x_coord, y_coord] == 1e-9:
+            grid_5[x_coord, y_coord] = values[sample_num]
+        else:
+            print("here")
+
+    # Assuming grid, grid_2, grid_3, and grid_4 are already defined
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    # Create a figure with 3 rows and 2 columns (6 subplots total, we'll use 5)
+    fig, axs = plt.subplots(3, 2, figsize=(14, 18))
+
+    # Log transform of grid 1 (top-left)
+    im1 = axs[0, 0].imshow(np.log(grid.abs().numpy() + 1), cmap='viridis')
+    axs[0, 0].set_title('Grid 1 (log scale)')
+    plt.colorbar(im1, ax=axs[0, 0], fraction=0.046, pad=0.04)
+
+    # Log transform of grid 2 (top-right)
+    im2 = axs[0, 1].imshow(np.log(grid_2.abs().numpy() + 1), cmap='viridis')
+    axs[0, 1].set_title('Grid 2 (log scale)')
+    plt.colorbar(im2, ax=axs[0, 1], fraction=0.046, pad=0.04)
+
+    # Log transform of grid 3 (middle-left)
+    im3 = axs[1, 0].imshow(np.log(grid_3.abs().numpy() + 1), cmap='viridis')
+    axs[1, 0].set_title('Grid 3 (log scale)')
+    plt.colorbar(im3, ax=axs[1, 0], fraction=0.046, pad=0.04)
+
+    # Log transform of grid 4 (middle-right)
+    im4 = axs[1, 1].imshow(np.log(grid_4.abs().numpy() + 1), cmap='viridis')
+    axs[1, 1].set_title('Grid 4 (log scale)')
+    plt.colorbar(im4, ax=axs[1, 1], fraction=0.046, pad=0.04)
+
+    # Log transform of grid 5 (bottom-left)
+    im5 = axs[2, 0].imshow(np.log(grid_5.abs().numpy() + 1), cmap='viridis')
+    axs[2, 0].set_title('Grid 5 (log scale)')
+    plt.colorbar(im5, ax=axs[2, 0], fraction=0.046, pad=0.04)
+
+    # Remove the unused subplot
+    fig.delaxes(axs[2, 1])
+
+    # Adjust Grid 5 to be centered in the bottom row
+    axs[2, 0].set_position([0.3, axs[2, 0].get_position().y0,
+                            axs[2, 0].get_position().width,
+                            axs[2, 0].get_position().height])
+
+    # Adjust layout
+    plt.tight_layout()
+    plt.show()
+
     return grid
 
 
