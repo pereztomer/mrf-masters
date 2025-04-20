@@ -10,22 +10,23 @@ import numpy as np
 import pypulseq as pp
 
 
-def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_se_rs_64_64_pypulseq.seq'):
+def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_se_rs_Nx_256_Ny_256_acceleration_pypulseq.seq'):
     # ======
     # SETUP
     # ======
-    fov = 250e-3  # Define FOV and resolution
-    Nx = 64
-    Ny = 64
+    R = 2
+    fov = 220e-3  # Define FOV and resolution
+    Nx = 256
+    Ny = 256
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
-    TE = 40e-3
-
+    # TE = 40e-3
+    TE = 0.15
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
     ro_os = 1  # Oversampling factor
-    readout_time = 4.2e-4  # Readout bandwidth
+    readout_time = 2 * 4.2e-4  # Readout bandwidth
     # Partial Fourier factor: 1: full sampling; 0: start with ky=0
-    part_fourier_factor = 1
+    part_fourier_factor = 9/16
 
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
@@ -121,7 +122,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     # Round up the duration to 2x gradient raster time
     blip_duration = np.ceil(2 * np.sqrt(delta_k / system.max_slew) / 10e-6 / 2) * 10e-6 * 2
     # Use negative blips to save one k-space line on our way to center of k-space
-    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k, duration=blip_duration)
+    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k * R, duration=blip_duration * R)
 
     # Readout gradient is a truncated trapezoid with dead times at the beginning and at the end each equal to a half of
     # blip duration. The area between the blips should be defined by k_width. We do a two-step calculation: we first
@@ -168,14 +169,14 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
 
     # Phase encoding and partial Fourier
     # PE steps prior to ky=0, excluding the central line
-    Ny_pre = round(part_fourier_factor * Ny / 2 - 1)
+    Ny_pre = round(part_fourier_factor * Ny / (2*R) - 1)
     # PE lines after the k-space center including the central line
-    Ny_post = round(Ny / 2 + 1)
+    Ny_post = round(Ny / (2*R) + 1)
     Ny_meas = Ny_pre + Ny_post
 
     # Pre-phasing gradients
     gx_pre = pp.make_trapezoid(channel='x', system=system, area=-gx.area / 2)
-    gy_pre = pp.make_trapezoid(channel='y', system=system, area=Ny_pre * delta_k)
+    gy_pre = pp.make_trapezoid(channel='y', system=system, area=(Ny_pre*R) * delta_k)
 
     gx_pre, gy_pre = pp.align(right=gx_pre, left=gy_pre)
     # Relax the PE prephaser to reduce stimulation
@@ -187,18 +188,18 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     rf_center_incl_delay = rf.delay + pp.calc_rf_center(rf)[0]
     rf180_center_incl_delay = rf180.delay + pp.calc_rf_center(rf180)[0]
     delay_TE1 = (
-        math.ceil(
-            (TE / 2 - pp.calc_duration(rf, gz) + rf_center_incl_delay - rf180_center_incl_delay)
-            / system.grad_raster_time
-        )
-        * system.grad_raster_time
+            math.ceil(
+                (TE / 2 - pp.calc_duration(rf, gz) + rf_center_incl_delay - rf180_center_incl_delay)
+                / system.grad_raster_time
+            )
+            * system.grad_raster_time
     )
     delay_TE2 = (
-        math.ceil(
-            (TE / 2 - pp.calc_duration(rf180, gz180n) + rf180_center_incl_delay - duration_to_center)
-            / system.grad_raster_time
-        )
-        * system.grad_raster_time
+            math.ceil(
+                (TE / 2 - pp.calc_duration(rf180, gz180n) + rf180_center_incl_delay - duration_to_center)
+                / system.grad_raster_time
+            )
+            * system.grad_raster_time
     )
     assert delay_TE1 >= 0
     # Now we merge slice refocusing, TE delay and pre-phasers into a single block

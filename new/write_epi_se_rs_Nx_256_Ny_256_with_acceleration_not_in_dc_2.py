@@ -10,20 +10,23 @@ import numpy as np
 import pypulseq as pp
 
 
-def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_se_rs_64_64_pypulseq.seq'):
+def main(plot: bool = False, write_seq: bool = False,
+         seq_filename: str = 'epi_se_rs_Nx_256_Ny_256_acceleration_dc_pypulseq.seq'):
     # ======
     # SETUP
     # ======
-    fov = 250e-3  # Define FOV and resolution
-    Nx = 64
-    Ny = 64
+    fully_sampled_rows_in_dc = 20
+    R = 2
+    fov = 220e-3  # Define FOV and resolution
+    Nx = 256
+    Ny = 256
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
-    TE = 40e-3
-
+    # TE = 40e-3
+    TE = 0.4
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
     ro_os = 1  # Oversampling factor
-    readout_time = 4.2e-4  # Readout bandwidth
+    readout_time = 2 * 4.2e-4  # Readout bandwidth
     # Partial Fourier factor: 1: full sampling; 0: start with ky=0
     part_fourier_factor = 1
 
@@ -121,7 +124,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     # Round up the duration to 2x gradient raster time
     blip_duration = np.ceil(2 * np.sqrt(delta_k / system.max_slew) / 10e-6 / 2) * 10e-6 * 2
     # Use negative blips to save one k-space line on our way to center of k-space
-    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k, duration=blip_duration)
+    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k * R, duration=blip_duration * R)
 
     # Readout gradient is a truncated trapezoid with dead times at the beginning and at the end each equal to a half of
     # blip duration. The area between the blips should be defined by k_width. We do a two-step calculation: we first
@@ -166,16 +169,36 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     gy_blipdown.waveform = gy_blipdown.waveform * pe_enable
     gy_blipdownup.waveform = gy_blipdownup.waveform * pe_enable
 
+    # gradients for sampling in dc:
+    gy_for_dc = pp.make_trapezoid(channel='y',
+                                  system=system,
+                                  area=-delta_k,
+                                  duration=blip_duration)
+
+    # Split the blip into two halves and produce a combined synthetic gradient
+    gy_parts_for_dc = pp.split_gradient_at(grad=gy_for_dc, time_point=blip_duration / 2, system=system)
+    gy_blipup_dc, gy_blipdown_dc, _ = pp.align(right=gy_parts_for_dc[0], left=[gy_parts_for_dc[1], gx])
+    gy_blipdownup_dc = pp.add_gradients((gy_blipdown_dc, gy_blipup_dc), system=system)
+
+    # pe_enable support
+    gy_blipup_dc.waveform = gy_blipup_dc.waveform * pe_enable
+    gy_blipdown_dc.waveform = gy_blipdown_dc.waveform * pe_enable
+    gy_blipdownup_dc.waveform = gy_blipdownup_dc.waveform * pe_enable
+
     # Phase encoding and partial Fourier
     # PE steps prior to ky=0, excluding the central line
-    Ny_pre = round(part_fourier_factor * Ny / 2 - 1)
+    Ny_pre = round(part_fourier_factor * Ny / (2 * R) - 1)
+    total_number_of_rows = int(((
+                                         part_fourier_factor * Ny) - fully_sampled_rows_in_dc) / R) + fully_sampled_rows_in_dc  # assuming 20 frequneces sampled in dc
+    beginning_of_dc = ((part_fourier_factor * Ny) - fully_sampled_rows_in_dc) / R / 2
+    end_of_dc = beginning_of_dc + fully_sampled_rows_in_dc
     # PE lines after the k-space center including the central line
-    Ny_post = round(Ny / 2 + 1)
+    Ny_post = round(Ny / (2 * R) + 1)
     Ny_meas = Ny_pre + Ny_post
 
     # Pre-phasing gradients
     gx_pre = pp.make_trapezoid(channel='x', system=system, area=-gx.area / 2)
-    gy_pre = pp.make_trapezoid(channel='y', system=system, area=Ny_pre * delta_k)
+    gy_pre = pp.make_trapezoid(channel='y', system=system, area=(Ny_pre * R) * delta_k)
 
     gx_pre, gy_pre = pp.align(right=gx_pre, left=gy_pre)
     # Relax the PE prephaser to reduce stimulation
@@ -183,22 +206,22 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     gy_pre.amplitude = gy_pre.amplitude * pe_enable
 
     # Calculate delay times
-    duration_to_center = (Ny_pre + 0.5) * pp.calc_duration(gx)
+    duration_to_center = (total_number_of_rows/2 + 0.5) * pp.calc_duration(gx)
     rf_center_incl_delay = rf.delay + pp.calc_rf_center(rf)[0]
     rf180_center_incl_delay = rf180.delay + pp.calc_rf_center(rf180)[0]
     delay_TE1 = (
-        math.ceil(
-            (TE / 2 - pp.calc_duration(rf, gz) + rf_center_incl_delay - rf180_center_incl_delay)
-            / system.grad_raster_time
-        )
-        * system.grad_raster_time
+            math.ceil(
+                (TE / 2 - pp.calc_duration(rf, gz) + rf_center_incl_delay - rf180_center_incl_delay)
+                / system.grad_raster_time
+            )
+            * system.grad_raster_time
     )
     delay_TE2 = (
-        math.ceil(
-            (TE / 2 - pp.calc_duration(rf180, gz180n) + rf180_center_incl_delay - duration_to_center)
-            / system.grad_raster_time
-        )
-        * system.grad_raster_time
+            math.ceil(
+                (TE / 2 - pp.calc_duration(rf180, gz180n) + rf180_center_incl_delay - duration_to_center)
+                / system.grad_raster_time
+            )
+            * system.grad_raster_time
     )
     assert delay_TE1 >= 0
     # Now we merge slice refocusing, TE delay and pre-phasers into a single block
@@ -221,16 +244,39 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
         seq.add_block(rf, gz, trig)
         seq.add_block(pp.make_delay(delay_TE1))
         seq.add_block(rf180, gz180n, pp.make_delay(delay_TE2), gx_pre, gy_pre)
-        for i in range(1, Ny_meas + 1):
+        for i in range(1, total_number_of_rows + 1):
+            # Add this at the beginning of your loop
+            if i == 128:
+                print(f"i: {i}")
+                print("Values before problematic row:")
+                print(f"gx amplitude: {gx.amplitude}")
+                print(f"gy_blipdownup first and last: {gy_blipdownup.waveform[0]}, {gy_blipdownup.waveform[-1]}")
+
+            if i == 129:
+                print(f"i: {i}")
+                print("Values at problematic row:")
+                print(f"gx amplitude: {gx.amplitude}")
+                print(f"gy_blipdownup first and last: {gy_blipdownup.waveform[0]}, {gy_blipdownup.waveform[-1]}")
+
             if i == 1:
                 # Read the first line of k-space with a single half-blip at the end
                 seq.add_block(gx, gy_blipup, adc)
             elif i == Ny_meas:
                 # Read the last line of k-space with a single half-blip at the beginning
                 seq.add_block(gx, gy_blipdown, adc)
-            else:
+            elif i > beginning_of_dc and i < end_of_dc:
                 # Read an intermediate line of k-space with a half-blip at the beginning and a half-blip at the end
-                seq.add_block(gx, gy_blipdownup, adc)
+                # sampling in dc
+                seq.add_block(gx, gy_blipdownup_dc, adc)
+
+            else:
+                try:
+                    seq.add_block(gx, gy_blipdownup, adc)
+                except Exception as e:
+                    print(i)
+                    print(e)
+                    break
+
             gx.amplitude = -gx.amplitude  # Reverse polarity of read gradient
 
     # Check whether the timing of the sequence is correct

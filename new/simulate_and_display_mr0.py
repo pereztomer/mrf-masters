@@ -40,16 +40,14 @@ def kspace_to_image(kspace):
 
 def main():
     use_pocs = False
-    seq_file = r"C:\Users\perez\Desktop\masters\mri_research\datasets\mrf custom dataset\epi\test_3_epi_se_rs\meas_MID00070_FID16377_epi_se_rs.dat"
-    seq_file = r"C:\Users\perez\Desktop\masters\mri_research\datasets\mrf custom dataset\epi\test_2_default_scan_epi\epi_with_acceleration\epi_pypulseq_with_acceleration.seq"
-    seq_file = r"C:\Users\perez\Desktop\masters\mri_research\datasets\mrf custom dataset\epi\test_2_default_scan_epi\epi_pypulseq.seq"
+    seq_file = "epi_se_rs_Nx_256_Ny_256_R_2_pypulseq.seq"
     plt.rcParams['figure.figsize'] = [10, 5]
     plt.rcParams['figure.dpi'] = 100  # 200 e.g. is really fine, but slower
     seq = pp.Sequence()
     seq.read(seq_file)
     print('load phantom')
     obj_p = mr0.VoxelGridPhantom.load_mat('numerical_brain_cropped.mat')
-    brain_phantom_res = 64
+    brain_phantom_res = 512
     obj_p = obj_p.interpolate(brain_phantom_res, brain_phantom_res, 1)
     obj_p.B0[:] = 0
 
@@ -63,6 +61,7 @@ def main():
     if plot_phantom:
         obj_p.plot()
     obj_p = obj_p.build()
+    exit()
     print('simulate (2D) \n' + seq_file)
     seq0 = mr0.Sequence.import_file(seq_file)
     # Simulate the sequence

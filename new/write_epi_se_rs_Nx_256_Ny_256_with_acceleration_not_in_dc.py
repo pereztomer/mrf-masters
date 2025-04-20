@@ -10,20 +10,22 @@ import numpy as np
 import pypulseq as pp
 
 
-def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_se_rs_64_64_pypulseq.seq'):
+def main(plot: bool = False, write_seq: bool = False,
+         seq_filename: str = 'epi_se_rs_Nx_256_Ny_256_R_2_not_in_dc_pypulseq.seq'):
     # ======
     # SETUP
     # ======
-    fov = 250e-3  # Define FOV and resolution
-    Nx = 64
-    Ny = 64
+    R = 2
+    fov = 220e-3  # Define FOV and resolution
+    Nx = 128
+    Ny = 128 * (1 / R)
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
-    TE = 40e-3
-
+    # TE = 40e-3
+    TE = 0.1
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
     ro_os = 1  # Oversampling factor
-    readout_time = 4.2e-4  # Readout bandwidth
+    readout_time = 2 * 4.2e-4  # Readout bandwidth
     # Partial Fourier factor: 1: full sampling; 0: start with ky=0
     part_fourier_factor = 1
 
@@ -122,6 +124,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     blip_duration = np.ceil(2 * np.sqrt(delta_k / system.max_slew) / 10e-6 / 2) * 10e-6 * 2
     # Use negative blips to save one k-space line on our way to center of k-space
     gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k, duration=blip_duration)
+    gy_accelerated = pp.make_trapezoid(channel='y', system=system, area=-delta_k * R, duration=blip_duration * R)
 
     # Readout gradient is a truncated trapezoid with dead times at the beginning and at the end each equal to a half of
     # blip duration. The area between the blips should be defined by k_width. We do a two-step calculation: we first
@@ -166,6 +169,17 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     gy_blipdown.waveform = gy_blipdown.waveform * pe_enable
     gy_blipdownup.waveform = gy_blipdownup.waveform * pe_enable
 
+    # Split the blip into two halves and produce a combined synthetic gradient
+    gy_parts_accelerated = pp.split_gradient_at(grad=gy_accelerated, time_point=(blip_duration * R) / 2, system=system)
+    gy_blipup_accelerated, gy_blipdown_accelerated, _ = pp.align(right=gy_parts_accelerated[0],
+                                                                 left=[gy_parts_accelerated[1], gx])
+    gy_blipdownup_accelerated = pp.add_gradients((gy_blipdown_accelerated, gy_blipup_accelerated), system=system)
+
+    # pe_enable support
+    gy_blipup_accelerated.waveform = gy_blipup_accelerated.waveform * pe_enable
+    gy_blipdown_accelerated.waveform = gy_blipdown_accelerated.waveform * pe_enable
+    gy_blipdownup_accelerated.waveform = gy_blipdownup_accelerated.waveform * pe_enable
+
     # Phase encoding and partial Fourier
     # PE steps prior to ky=0, excluding the central line
     Ny_pre = round(part_fourier_factor * Ny / 2 - 1)
@@ -187,18 +201,18 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     rf_center_incl_delay = rf.delay + pp.calc_rf_center(rf)[0]
     rf180_center_incl_delay = rf180.delay + pp.calc_rf_center(rf180)[0]
     delay_TE1 = (
-        math.ceil(
-            (TE / 2 - pp.calc_duration(rf, gz) + rf_center_incl_delay - rf180_center_incl_delay)
-            / system.grad_raster_time
-        )
-        * system.grad_raster_time
+            math.ceil(
+                (TE / 2 - pp.calc_duration(rf, gz) + rf_center_incl_delay - rf180_center_incl_delay)
+                / system.grad_raster_time
+            )
+            * system.grad_raster_time
     )
     delay_TE2 = (
-        math.ceil(
-            (TE / 2 - pp.calc_duration(rf180, gz180n) + rf180_center_incl_delay - duration_to_center)
-            / system.grad_raster_time
-        )
-        * system.grad_raster_time
+            math.ceil(
+                (TE / 2 - pp.calc_duration(rf180, gz180n) + rf180_center_incl_delay - duration_to_center)
+                / system.grad_raster_time
+            )
+            * system.grad_raster_time
     )
     assert delay_TE1 >= 0
     # Now we merge slice refocusing, TE delay and pre-phasers into a single block
@@ -221,17 +235,37 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
         seq.add_block(rf, gz, trig)
         seq.add_block(pp.make_delay(delay_TE1))
         seq.add_block(rf180, gz180n, pp.make_delay(delay_TE2), gx_pre, gy_pre)
-        for i in range(1, Ny_meas + 1):
+        i = 1
+        for _ in range(1, Ny_meas + 10):
             if i == 1:
                 # Read the first line of k-space with a single half-blip at the end
-                seq.add_block(gx, gy_blipup, adc)
+                # seq.add_block(gx, gy_blipup, adc)
+                seq.add_block(gx, gy_blipup_accelerated, adc)
+                i += 1
             elif i == Ny_meas:
                 # Read the last line of k-space with a single half-blip at the beginning
-                seq.add_block(gx, gy_blipdown, adc)
+                seq.add_block(gx, gy_blipdown_accelerated, adc)
+                i += 1
             else:
-                # Read an intermediate line of k-space with a half-blip at the beginning and a half-blip at the end
-                seq.add_block(gx, gy_blipdownup, adc)
+                try:
+                    if i < int(Ny * 0.5 - 5) or i > int(Ny * 0.5 + 5):
+                        seq.add_block(gx, gy_blipdownup_accelerated, adc)  # Phase blip
+                        i += R
+                    else:
+                        seq.add_block(gx, gy_blipdownup,adc)  # Read an intermediate line of k-space with a half-blip at the beginning and a half-blip at the end
+                        i += 1
+                except Exception as e:
+                    print(e)
+                    print(f"_: {_}")
+                    print(f"i: {i}")
+                    print("Failed!")
+                    break
+
             gx.amplitude = -gx.amplitude  # Reverse polarity of read gradient
+            if i > Ny_meas + 3:
+                break
+
+    # gy_parts_accelerated, gy_blipup_accelerated, gy_blipdown_accelerated, gy_blipdownup_accelerated
 
     # Check whether the timing of the sequence is correct
     ok, error_report = seq.check_timing()
