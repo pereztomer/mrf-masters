@@ -38,7 +38,7 @@ def main(plot: bool = False, write_seq: bool = False,
     system = pp.Opts(
         max_grad=60,
         grad_unit='mT/m',
-        max_slew=200,
+        max_slew=170,
         slew_unit='T/m/s',
         rf_ringdown_time=30e-6,
         rf_dead_time=100e-6,
