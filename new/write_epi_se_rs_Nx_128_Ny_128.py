@@ -8,9 +8,10 @@ import math
 import numpy as np
 
 import pypulseq as pp
+import matplotlib
+matplotlib.use('Agg')
 
-
-def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_se_rs_Nx_128_Ny_128_pypulseq.seq'):
+def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '28.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_sleq_190.seq'):
     # ======
     # SETUP
     # ======
@@ -18,7 +19,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     Nx = 128
     Ny = 128
     slice_thickness = 3e-3  # Slice thickness
-    n_slices = 3
+    n_slices = 1
     # TE = 40e-3
     TE = 0.15
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
@@ -35,7 +36,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     system = pp.Opts(
         max_grad=60,
         grad_unit='mT/m',
-        max_slew=170,
+        max_slew=150,
         slew_unit='T/m/s',
         rf_ringdown_time=30e-6,
         rf_dead_time=100e-6,

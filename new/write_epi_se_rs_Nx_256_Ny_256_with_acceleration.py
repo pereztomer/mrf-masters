@@ -8,9 +8,10 @@ import math
 import numpy as np
 
 import pypulseq as pp
+import matplotlib
+matplotlib.use('Agg')
 
-
-def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_se_rs_Nx_256_Ny_256_acceleration_pypulseq.seq'):
+def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '28.4.25_epi_se_rs_Nx_256_Ny_256_acceleration_R_2_no_falt_fourier_slew_150_pypulseq.seq'):
     # ======
     # SETUP
     # ======
@@ -26,7 +27,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     ro_os = 1  # Oversampling factor
     readout_time = 2 * 4.2e-4  # Readout bandwidth
     # Partial Fourier factor: 1: full sampling; 0: start with ky=0
-    part_fourier_factor = 9/16
+    part_fourier_factor = 1
 
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
@@ -36,7 +37,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'epi_s
     system = pp.Opts(
         max_grad=60,
         grad_unit='mT/m',
-        max_slew=170,
+        max_slew=150,
         slew_unit='T/m/s',
         rf_ringdown_time=30e-6,
         rf_dead_time=100e-6,

@@ -8,35 +8,35 @@ import math
 import numpy as np
 
 import pypulseq as pp
+import matplotlib.pyplot as plt
 
-import matplotlib
-matplotlib.use('Agg')
-def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '28.4.25_epi_se_rs_Nx_256_Ny_256_slew_130_pypulseq.seq'):
+def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '28.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_sleq_190.seq'):
     # ======
     # SETUP
     # ======
     fov = 220e-3  # Define FOV and resolution
-    Nx = 256
-    Ny = 256
+    Nx = 128
+    Ny = 128
     slice_thickness = 3e-3  # Slice thickness
-    n_slices = 3
+    n_slices = 1
     # TE = 40e-3
-    TE = 0.35
+    TE = 0.15
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
     ro_os = 1  # Oversampling factor
-    readout_time = 3 * 4.2e-4  # Readout bandwidth
+    readout_time = 2 * 4.2e-4  # Readout bandwidth
     # Partial Fourier factor: 1: full sampling; 0: start with ky=0
     part_fourier_factor = 1
-
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
     spoil_factor = 1.5  # Spoiling gradient around the pi-pulse (rf180)
-
+    flip_angles = [30,35,40,45,50,55]
+    steps_number = len(flip_angles)
     # Set system limits
+
     system = pp.Opts(
         max_grad=60,
         grad_unit='mT/m',
-        max_slew=130,
+        max_slew=150,
         slew_unit='T/m/s',
         rf_ringdown_time=30e-6,
         rf_dead_time=100e-6,
@@ -54,24 +54,28 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '28.4.
     rf_fs = pp.make_gauss_pulse(
         flip_angle=110 * np.pi / 180,
         system=system,
-        duration=10e-3,
+        duration=8e-3,
         bandwidth=np.abs(sat_freq),
         freq_offset=sat_freq,
         delay=system.rf_dead_time,
     )
     gz_fs = pp.make_trapezoid(channel='z', system=system, delay=pp.calc_duration(rf_fs), area=1 / 1e-4)
 
-    # Create 90 degree slice selection pulse and gradient
-    rf, gz, gz_reph = pp.make_sinc_pulse(
-        flip_angle=np.pi / 2,
-        system=system,
-        duration=t_RF_ex,
-        slice_thickness=slice_thickness,
-        apodization=0.5,
-        time_bw_product=4,
-        return_gz=True,
-        delay=system.rf_dead_time,
-    )
+    rf_pulses = []
+    for flip_angle in flip_angles:
+        # Create 90 degree slice selection pulse and gradient
+        rf, gz, gz_reph = pp.make_sinc_pulse(
+            flip_angle=flip_angle * (np.pi / 180),
+            system=system,
+            duration=t_RF_ex,
+            slice_thickness=slice_thickness,
+            apodization=0.5,
+            time_bw_product=4,
+            return_gz=True,
+            delay=system.rf_dead_time,
+        )
+        rf_pulses.append(rf)
+
 
     # Create 90 degree slice refocusing pulse and gradients
     rf180, gz180, _ = pp.make_sinc_pulse(
@@ -216,23 +220,24 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '28.4.
     # ======
     # Define sequence blocks
     for s in range(n_slices):
-        seq.add_block(rf_fs, gz_fs)
-        rf.freq_offset = gz.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
-        rf180.freq_offset = gz180.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
-        seq.add_block(rf, gz, trig)
-        seq.add_block(pp.make_delay(delay_TE1))
-        seq.add_block(rf180, gz180n, pp.make_delay(delay_TE2), gx_pre, gy_pre)
-        for i in range(1, Ny_meas + 1):
-            if i == 1:
-                # Read the first line of k-space with a single half-blip at the end
-                seq.add_block(gx, gy_blipup, adc)
-            elif i == Ny_meas:
-                # Read the last line of k-space with a single half-blip at the beginning
-                seq.add_block(gx, gy_blipdown, adc)
-            else:
-                # Read an intermediate line of k-space with a half-blip at the beginning and a half-blip at the end
-                seq.add_block(gx, gy_blipdownup, adc)
-            gx.amplitude = -gx.amplitude  # Reverse polarity of read gradient
+        for t in range(steps_number):
+            seq.add_block(rf_fs, gz_fs)
+            rf.freq_offset = gz.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
+            rf180.freq_offset = gz180.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
+            seq.add_block(rf_pulses[t], gz, trig)
+            seq.add_block(pp.make_delay(delay_TE1))
+            seq.add_block(rf180, gz180n, pp.make_delay(delay_TE2), gx_pre, gy_pre)
+            for i in range(1, Ny_meas + 1):
+                if i == 1:
+                    # Read the first line of k-space with a single half-blip at the end
+                    seq.add_block(gx, gy_blipup, adc)
+                elif i == Ny_meas:
+                    # Read the last line of k-space with a single half-blip at the beginning
+                    seq.add_block(gx, gy_blipdown, adc)
+                else:
+                    # Read an intermediate line of k-space with a half-blip at the beginning and a half-blip at the end
+                    seq.add_block(gx, gy_blipdownup, adc)
+                gx.amplitude = -gx.amplitude  # Reverse polarity of read gradient
 
     # Check whether the timing of the sequence is correct
     ok, error_report = seq.check_timing()
