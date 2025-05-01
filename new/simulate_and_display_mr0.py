@@ -40,7 +40,7 @@ def kspace_to_image(kspace):
 
 def main():
     use_pocs = False
-    seq_file = "epi_se_rs_Nx_256_Ny_256_R_2_pypulseq.seq"
+    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\progress\29.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_slew_150_time_series.seq"
     plt.rcParams['figure.figsize'] = [10, 5]
     plt.rcParams['figure.dpi'] = 100  # 200 e.g. is really fine, but slower
     seq = pp.Sequence()
@@ -61,12 +61,13 @@ def main():
     if plot_phantom:
         obj_p.plot()
     obj_p = obj_p.build()
-    exit()
+
     print('simulate (2D) \n' + seq_file)
     seq0 = mr0.Sequence.import_file(seq_file)
     # Simulate the sequence
     graph = mr0.compute_graph(seq0, obj_p, 200, 1e-3)
     signal = mr0.execute_graph(graph, seq0, obj_p, print_progress=False)
+    exit()
     # @title 3. Plot sequence and signal
     # sp_adc, t_adc = mr0.util.pulseq_plot(seq=seq, signal=signal.numpy())
 

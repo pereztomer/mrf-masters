@@ -8,9 +8,10 @@ import math
 import numpy as np
 
 import pypulseq as pp
-import matplotlib.pyplot as plt
+# import matplotlib
+# matplotlib.use('Agg')
 
-def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '28.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_sleq_190.seq'):
+def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '29.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_slew_150_time_series.seq'):
     # ======
     # SETUP
     # ======
@@ -29,7 +30,16 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '28.4.
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
     spoil_factor = 1.5  # Spoiling gradient around the pi-pulse (rf180)
-    flip_angles = [30,35,40,45,50,55]
+    # flip_angles = [
+    #     15.000000, 15.000000, 15.000000, 15.000000, 21.000000, 41.000000, 74.000000, 90.000000,
+    #     90.000000, 90.000000, 90.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000,
+    #     15.000000, 15.000000, 15.000000, 21.000000, 41.000000, 74.000000, 90.000000, 90.000000,
+    #     90.000000, 90.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000,
+    #     15.000000, 15.000000, 21.000000, 41.000000, 74.000000, 90.000000, 90.000000, 90.000000,
+    #     90.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000,
+    #     15.000000, 21.000000
+    # ]
+    flip_angles = [90, 70]
     steps_number = len(flip_angles)
     # Set system limits
 
