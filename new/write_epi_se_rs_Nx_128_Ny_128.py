@@ -11,7 +11,7 @@ import pypulseq as pp
 import matplotlib
 matplotlib.use('Agg')
 
-def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '29.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_slew_150_time_series.seq'):
+def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '1.5.25_epi_se_rs_time_series_with_inversion.seq'):
     # ======
     # SETUP
     # ======

@@ -8,10 +8,13 @@ import math
 import numpy as np
 
 import pypulseq as pp
+
+
 # import matplotlib
 # matplotlib.use('Agg')
 
-def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '29.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_slew_150_time_series.seq'):
+def main(plot: bool = False, write_seq: bool = False,
+         seq_filename: str = '1.5.25_epi_se_rs_time_series_with_inversion.seq'):
     # ======
     # SETUP
     # ======
@@ -71,6 +74,8 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '29.4.
     )
     gz_fs = pp.make_trapezoid(channel='z', system=system, delay=pp.calc_duration(rf_fs), area=1 / 1e-4)
 
+    tr_spoil_factor = 2.0  # Adjust this value as needed for sufficient dephasing
+
     rf_pulses = []
     for flip_angle in flip_angles:
         # Create 90 degree slice selection pulse and gradient
@@ -86,6 +91,12 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '29.4.
         )
         rf_pulses.append(rf)
 
+    tr_spoiler = pp.make_trapezoid(
+        channel='z',  # Apply along slice selection direction
+        system=system,
+        area=tr_spoil_factor * gz.area,  # Scale based on slice selection gradient
+        duration=3e-3  # Typical duration, adjust as needed
+    )
 
     # Create 90 degree slice refocusing pulse and gradients
     rf180, gz180, _ = pp.make_sinc_pulse(
@@ -202,18 +213,18 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '29.4.
     rf_center_incl_delay = rf.delay + pp.calc_rf_center(rf)[0]
     rf180_center_incl_delay = rf180.delay + pp.calc_rf_center(rf180)[0]
     delay_TE1 = (
-        math.ceil(
-            (TE / 2 - pp.calc_duration(rf, gz) + rf_center_incl_delay - rf180_center_incl_delay)
-            / system.grad_raster_time
-        )
-        * system.grad_raster_time
+            math.ceil(
+                (TE / 2 - pp.calc_duration(rf, gz) + rf_center_incl_delay - rf180_center_incl_delay)
+                / system.grad_raster_time
+            )
+            * system.grad_raster_time
     )
     delay_TE2 = (
-        math.ceil(
-            (TE / 2 - pp.calc_duration(rf180, gz180n) + rf180_center_incl_delay - duration_to_center)
-            / system.grad_raster_time
-        )
-        * system.grad_raster_time
+            math.ceil(
+                (TE / 2 - pp.calc_duration(rf180, gz180n) + rf180_center_incl_delay - duration_to_center)
+                / system.grad_raster_time
+            )
+            * system.grad_raster_time
     )
     assert delay_TE1 >= 0
     # Now we merge slice refocusing, TE delay and pre-phasers into a single block
@@ -229,25 +240,51 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = '29.4.
     # CONSTRUCT SEQUENCE
     # ======
     # Define sequence blocks
+    # Define sequence blocks
     for s in range(n_slices):
+        # 1. INITIAL ADIABATIC INVERSION PULSE (once per slice)
+        rf_inv, gz_inv, gzr_inv = pp.make_adiabatic_pulse(
+            pulse_type='hypsec',
+            duration=4e-3,
+            delay=system.rf_dead_time,
+            system=system,
+            use='inversion',
+            slice_thickness=slice_thickness,
+            return_gz=True
+        )
+        # Set slice position
+        rf_inv.freq_offset = gz_inv.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
+        # Add the pulse and gradient
+        seq.add_block(rf_inv, gz_inv)
+        # Add the rephasing gradient
+        seq.add_block(gzr_inv)
+
+        # 2. Add a delay after inversion (typically 10-30ms)
+        seq.add_block(pp.make_delay(40e-3))
+
+        # 3. MULTIPLE EXCITATIONS FOR THIS SLICE
         for t in range(steps_number):
+            # Continue with your existing sequence...
             seq.add_block(rf_fs, gz_fs)
             rf.freq_offset = gz.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
             rf180.freq_offset = gz180.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
             seq.add_block(rf_pulses[t], gz, trig)
             seq.add_block(pp.make_delay(delay_TE1))
             seq.add_block(rf180, gz180n, pp.make_delay(delay_TE2), gx_pre, gy_pre)
+
+            # EPI readout
             for i in range(1, Ny_meas + 1):
                 if i == 1:
-                    # Read the first line of k-space with a single half-blip at the end
                     seq.add_block(gx, gy_blipup, adc)
                 elif i == Ny_meas:
-                    # Read the last line of k-space with a single half-blip at the beginning
                     seq.add_block(gx, gy_blipdown, adc)
                 else:
-                    # Read an intermediate line of k-space with a half-blip at the beginning and a half-blip at the end
                     seq.add_block(gx, gy_blipdownup, adc)
-                gx.amplitude = -gx.amplitude  # Reverse polarity of read gradient
+                gx.amplitude = -gx.amplitude
+
+            # End-of-TR spoiler
+            seq.add_block(tr_spoiler)
+
 
     # Check whether the timing of the sequence is correct
     ok, error_report = seq.check_timing()

@@ -40,14 +40,14 @@ def kspace_to_image(kspace):
 
 def main():
     use_pocs = False
-    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\progress\29.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_slew_150_time_series.seq"
+    seq_file = r"C:\Users\perez\Desktop\29.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_slew_150_time_series.seq"
     plt.rcParams['figure.figsize'] = [10, 5]
     plt.rcParams['figure.dpi'] = 100  # 200 e.g. is really fine, but slower
     seq = pp.Sequence()
     seq.read(seq_file)
     print('load phantom')
-    obj_p = mr0.VoxelGridPhantom.load_mat('numerical_brain_cropped.mat')
-    brain_phantom_res = 512
+    obj_p = mr0.VoxelGridPhantom.load_mat(r"C:\Users\perez\Desktop\numerical_brain_cropped.mat")
+    brain_phantom_res = 128
     obj_p = obj_p.interpolate(brain_phantom_res, brain_phantom_res, 1)
     obj_p.B0[:] = 0
 
@@ -66,15 +66,16 @@ def main():
     seq0 = mr0.Sequence.import_file(seq_file)
     # Simulate the sequence
     graph = mr0.compute_graph(seq0, obj_p, 200, 1e-3)
-    signal = mr0.execute_graph(graph, seq0, obj_p, print_progress=False)
-    exit()
+    signal = mr0.execute_graph(graph, seq0, obj_p, print_progress=True)
+
     # @title 3. Plot sequence and signal
-    # sp_adc, t_adc = mr0.util.pulseq_plot(seq=seq, signal=signal.numpy())
+    sp_adc, t_adc = mr0.util.pulseq_plot(seq=seq, signal=signal.numpy())
 
     # Unfortunately, we need to limit the resolution as reco_adjoint is very RAM-hungy
     print('reconstruct and plot')
-    # seq0.plot_kspace_trajectory()
+    seq0.plot_kspace_trajectory()
     kspace_test = seq0.get_kspace()
+    exit()
     # [x,y,z,dephasing time]
 
     # reshape to slices:

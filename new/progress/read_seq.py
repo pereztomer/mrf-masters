@@ -2,7 +2,7 @@ import pypulseq as pp
 
 # Load an existing sequence file
 seq = pp.Sequence()
-seq.read('29.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_slew_150_time_series.seq')
+seq.read('1.5.25_epi_se_rs_time_series_with_inversion.seq')
 
 out = seq.calculate_kspace()
 # Now you can access various parts of the sequence
