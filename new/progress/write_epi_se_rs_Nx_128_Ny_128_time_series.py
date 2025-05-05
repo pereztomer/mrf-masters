@@ -14,7 +14,7 @@ import pypulseq as pp
 # matplotlib.use('Agg')
 
 def main(plot: bool = False, write_seq: bool = False,
-         seq_filename: str = '1.5.25_epi_se_rs_time_series_with_inversion.seq'):
+         seq_filename: str = '4.5.25_epi_time_series_with_inversion_spoiler_gradient_v3.seq'):
     # ======
     # SETUP
     # ======
@@ -29,22 +29,33 @@ def main(plot: bool = False, write_seq: bool = False,
     ro_os = 1  # Oversampling factor
     readout_time = 2 * 4.2e-4  # Readout bandwidth
     # Partial Fourier factor: 1: full sampling; 0: start with ky=0
-    part_fourier_factor = 1
+    part_fourier_factor = 9/16
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
     spoil_factor = 1.5  # Spoiling gradient around the pi-pulse (rf180)
-    # flip_angles = [
-    #     15.000000, 15.000000, 15.000000, 15.000000, 21.000000, 41.000000, 74.000000, 90.000000,
-    #     90.000000, 90.000000, 90.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000,
-    #     15.000000, 15.000000, 15.000000, 21.000000, 41.000000, 74.000000, 90.000000, 90.000000,
-    #     90.000000, 90.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000,
-    #     15.000000, 15.000000, 21.000000, 41.000000, 74.000000, 90.000000, 90.000000, 90.000000,
-    #     90.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000,
-    #     15.000000, 21.000000
-    # ]
-    flip_angles = [90, 70]
+    flip_angles = [
+        15.000000, 15.000000, 15.000000, 15.000000, 21.000000, 41.000000, 74.000000, 90.000000,
+        90.000000, 90.000000, 90.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000,
+        15.000000, 15.000000, 15.000000, 21.000000, 41.000000, 74.000000, 90.000000, 90.000000,
+        90.000000, 90.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000,
+        15.000000, 15.000000, 21.000000, 41.000000, 74.000000, 90.000000, 90.000000, 90.000000,
+        90.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000, 15.000000,
+        15.000000, 21.000000
+    ]
+    tr_values_ms = [
+        200, 200, 200, 138, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75,
+        159, 200, 200, 200, 138, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75,
+        159, 200, 200, 200, 138, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75,
+        159, 200, 200, 200, 138, 75
+    ]
+    # flip_angles = flip_angles[:1]
+    # tr_values_ms = tr_values_ms[:1]
+    # Convert from milliseconds to seconds for the sequence timing
+    tr_values = [tr_ms / 1000.0 for tr_ms in tr_values_ms]
+
     steps_number = len(flip_angles)
     # Set system limits
+    assert len(flip_angles) == len(tr_values)
 
     system = pp.Opts(
         max_grad=60,
@@ -194,9 +205,10 @@ def main(plot: bool = False, write_seq: bool = False,
 
     # Phase encoding and partial Fourier
     # PE steps prior to ky=0, excluding the central line
-    Ny_pre = round(part_fourier_factor * Ny / 2 - 1)
+    # Ny_pre = round(part_fourier_factor * Ny / 2 - 1)
+    Ny_pre = round(Ny / 2 - 1)
     # PE lines after the k-space center including the central line
-    Ny_post = round(Ny / 2 + 1)
+    Ny_post = round(part_fourier_factor * Ny / 2 + 1)
     Ny_meas = Ny_pre + Ny_post
 
     # Pre-phasing gradients
@@ -285,6 +297,23 @@ def main(plot: bool = False, write_seq: bool = False,
             # End-of-TR spoiler
             seq.add_block(tr_spoiler)
 
+            current_seq_blocks_duration = pp.calc_duration(rf_pulses[t], gz)  # Excitation
+            current_seq_blocks_duration += delay_TE1  # First TE delay
+            current_seq_blocks_duration += pp.calc_duration(rf180, gz180n, gx_pre, gy_pre)  # Refocusing + prep
+            current_seq_blocks_duration += Ny_meas * pp.calc_duration(gx, adc)  # EPI readout
+            current_seq_blocks_duration += pp.calc_duration(tr_spoiler)  # End spoiler
+            print(current_seq_blocks_duration)
+
+            desired_tr = tr_values[t]  # Get the TR for this repetition in seconds
+            additional_delay = desired_tr - current_seq_blocks_duration
+
+            # Add a delay to achieve the desired TR if needed
+            if additional_delay > 0:
+                seq.add_block(pp.make_delay(additional_delay))
+            else:
+                print(
+                    f"Warning: TR {t} ({tr_values[t] * 1000:.1f} ms) is too short! Minimum possible TR is {current_seq_blocks_duration * 1000:.1f} ms")
+                # You could handle this by adjusting the TR value or allowing a shorter TR
 
     # Check whether the timing of the sequence is correct
     ok, error_report = seq.check_timing()
