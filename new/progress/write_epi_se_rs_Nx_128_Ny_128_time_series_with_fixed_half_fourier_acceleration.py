@@ -1,17 +1,9 @@
-"""
-This is an experimental high-performance EPI sequence which uses split gradients to overlap blips with the readout
-gradients combined with ramp-sampling.
-"""
-
 import math
 
 import numpy as np
 
 import pypulseq as pp
 
-
-# import matplotlib
-# matplotlib.use('Agg')
 
 def main(plot: bool = False, write_seq: bool = False,
          seq_filename: str = '6.5.25_epi_time_series_with_inversion_spoiler_gradient_half_fourier.seq'):
@@ -23,13 +15,15 @@ def main(plot: bool = False, write_seq: bool = False,
     Ny = 128
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
-    # TE = 40e-3
     TE = 0.15
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
     ro_os = 1  # Oversampling factor
     readout_time = 2 * 4.2e-4  # Readout bandwidth
-    # Partial Fourier factor: 1: full sampling; 0: start with ky=0
-    part_fourier_factor = 9/16
+    
+    # Acquisition parameters
+    part_fourier_factor = 9/16  # Partial Fourier factor: 1: full sampling; 0.5: sample from -kmax to 0
+    R = 2  # Acceleration factor (parallel imaging): 1: no acceleration, 2: acquire every other line, etc.
+    
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
     spoil_factor = 1.5  # Spoiling gradient around the pi-pulse (rf180)
@@ -157,8 +151,10 @@ def main(plot: bool = False, write_seq: bool = False,
     # Phase blip in shortest possible time
     # Round up the duration to 2x gradient raster time
     blip_duration = np.ceil(2 * np.sqrt(delta_k / system.max_slew) / 10e-6 / 2) * 10e-6 * 2
+    
     # Use negative blips to save one k-space line on our way to center of k-space
-    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k, duration=blip_duration)
+    # Multiply area by R for acceleration to skip lines
+    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k * gy_area_factor, duration=blip_duration)
 
     # Readout gradient is a truncated trapezoid with dead times at the beginning and at the end each equal to a half of
     # blip duration. The area between the blips should be defined by k_width. We do a two-step calculation: we first
@@ -204,17 +200,66 @@ def main(plot: bool = False, write_seq: bool = False,
     gy_blipdownup.waveform = gy_blipdownup.waveform * pe_enable
 
     # Phase encoding and partial Fourier
-    # PE steps prior to ky=0, excluding the central line
-    # Ny_pre = round(part_fourier_factor * Ny / 2 - 1)
-    # Ny_pre = round(part_fourier_factor * Ny / 2 - 1)
-    Ny_pre = round(Ny / 2 - 1)
-    # PE lines after the k-space center including the central line
-    Ny_post = round(part_fourier_factor * Ny / 2 + 1)
+    # MODIFIED: Always start from maximum negative k-space (-kmax)
+    # For full k-space acquisition (part_fourier_factor=1):
+    # - Ny_pre = Ny/2 - 1 lines before ky=0 (excluding center line)
+    # - Ny_post = Ny/2 + 1 lines after and including ky=0
+    # For partial Fourier, we keep Ny_pre the same but adjust Ny_post based on factor
+    
+    # Ensure part_fourier_factor is at least 0.5
+    assert part_fourier_factor >= 0.5, "Partial Fourier factor must be at least 0.5"
+    assert R >= 1, "Acceleration factor must be at least 1"
+    assert isinstance(R, int) or R.is_integer(), "Acceleration factor must be an integer"
+    
+    # Convert R to integer if it's a float
+    R = int(R)
+    
+    # Calculate number of lines before k-space center (excluding center)
+    Ny_pre_full = round(Ny / 2 - 1)
+    
+    # Calculate number of lines after k-space center (including center)
+    # For part_fourier_factor=1, this equals Ny/2 + 1
+    # For part_fourier_factor=0.5, this would equal 1 (just the center line)
+    Ny_post_full = max(1, round(part_fourier_factor * Ny - Ny_pre_full))
+    
+    # Create a list of all k-space lines to be acquired (indices relative to k-space center)
+    ky_indices_full = list(range(-Ny_pre_full, Ny_post_full))
+    
+    # Apply acceleration factor R by keeping every R-th line
+    # Always include the center line (index 0)
+    ky_indices_accel = []
+    for i, idx in enumerate(ky_indices_full):
+        if idx == 0 or i % R == 0:  # Always keep the center line (idx=0)
+            ky_indices_accel.append(idx)
+    
+    # Sort to ensure proper ordering
+    ky_indices_accel.sort()
+    
+    # Extract the new pre and post counts
+    Ny_pre = sum(1 for idx in ky_indices_accel if idx < 0)
+    Ny_post = sum(1 for idx in ky_indices_accel if idx >= 0)
+    
+    # Total number of measured lines
     Ny_meas = Ny_pre + Ny_post
+    
+    print(f"Sampling {Ny_meas} lines with acceleration factor R={R}:")
+    print(f"  - {Ny_pre} lines before center and {Ny_post} lines after/including center")
+    print(f"  - Full sampling would have used {Ny_pre_full + Ny_post_full} lines")
+    
+    # Calculate the step size for phase encoding blips with acceleration
+    # We need to make each blip jump by R lines in k-space
+    gy_area_factor = R
+    
+    print(f"Sampling {Ny_meas} lines: {Ny_pre} lines before center and {Ny_post} lines after/including center")
 
-    # Pre-phasing gradients
+    # Pre-phasing gradients - prepare to start at -kmax
     gx_pre = pp.make_trapezoid(channel='x', system=system, area=-gx.area / 2)
-    gy_pre = pp.make_trapezoid(channel='y', system=system, area=Ny_pre * delta_k)
+    
+    # Always prephase to the most negative k-space line to be acquired
+    # This might not be -Ny_pre * delta_k due to acceleration
+    # We use the first index from our accelerated k-space trajectory
+    first_idx = ky_indices_accel[0]
+    gy_pre = pp.make_trapezoid(channel='y', system=system, area=-first_idx * delta_k)
 
     gx_pre, gy_pre = pp.align(right=gx_pre, left=gy_pre)
     # Relax the PE prephaser to reduce stimulation
@@ -222,7 +267,8 @@ def main(plot: bool = False, write_seq: bool = False,
     gy_pre.amplitude = gy_pre.amplitude * pe_enable
 
     # Calculate delay times
-    duration_to_center = (Ny_pre + 0.5) * pp.calc_duration(gx)
+    # For accelerated acquisition, the time to reach the k-space center is reduced
+    duration_to_center = (sum(1 for idx in ky_indices_accel if idx < 0) + 0.5) * pp.calc_duration(gx)
     rf_center_incl_delay = rf.delay + pp.calc_rf_center(rf)[0]
     rf180_center_incl_delay = rf180.delay + pp.calc_rf_center(rf180)[0]
     delay_TE1 = (
@@ -252,8 +298,6 @@ def main(plot: bool = False, write_seq: bool = False,
     # ======
     # CONSTRUCT SEQUENCE
     # ======
-    # Define sequence blocks
-    # Define sequence blocks
     for s in range(n_slices):
         # 1. INITIAL ADIABATIC INVERSION PULSE (once per slice)
         rf_inv, gz_inv, gzr_inv = pp.make_adiabatic_pulse(
@@ -303,7 +347,7 @@ def main(plot: bool = False, write_seq: bool = False,
             current_seq_blocks_duration += pp.calc_duration(rf180, gz180n, gx_pre, gy_pre)  # Refocusing + prep
             current_seq_blocks_duration += Ny_meas * pp.calc_duration(gx, adc)  # EPI readout
             current_seq_blocks_duration += pp.calc_duration(tr_spoiler)  # End spoiler
-            print(current_seq_blocks_duration)
+            print(f"TR {t+1}: Total sequence duration: {current_seq_blocks_duration:.6f} s")
 
             desired_tr = tr_values[t]  # Get the TR for this repetition in seconds
             additional_delay = desired_tr - current_seq_blocks_duration
@@ -311,10 +355,10 @@ def main(plot: bool = False, write_seq: bool = False,
             # Add a delay to achieve the desired TR if needed
             if additional_delay > 0:
                 seq.add_block(pp.make_delay(additional_delay))
+                print(f"Adding delay of {additional_delay:.6f} s to reach desired TR of {desired_tr:.6f} s")
             else:
                 print(
-                    f"Warning: TR {t} ({tr_values[t] * 1000:.1f} ms) is too short! Minimum possible TR is {current_seq_blocks_duration * 1000:.1f} ms")
-                # You could handle this by adjusting the TR value or allowing a shorter TR
+                    f"Warning: TR {t+1} ({tr_values[t] * 1000:.1f} ms) is too short! Minimum possible TR is {current_seq_blocks_duration * 1000:.1f} ms")
 
     # Check whether the timing of the sequence is correct
     ok, error_report = seq.check_timing()

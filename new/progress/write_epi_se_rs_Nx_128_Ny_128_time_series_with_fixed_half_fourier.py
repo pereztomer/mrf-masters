@@ -1,17 +1,9 @@
-"""
-This is an experimental high-performance EPI sequence which uses split gradients to overlap blips with the readout
-gradients combined with ramp-sampling.
-"""
-
 import math
 
 import numpy as np
 
 import pypulseq as pp
 
-
-# import matplotlib
-# matplotlib.use('Agg')
 
 def main(plot: bool = False, write_seq: bool = False,
          seq_filename: str = '6.5.25_epi_time_series_with_inversion_spoiler_gradient_half_fourier.seq'):
@@ -23,13 +15,12 @@ def main(plot: bool = False, write_seq: bool = False,
     Ny = 128
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
-    # TE = 40e-3
     TE = 0.15
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
     ro_os = 1  # Oversampling factor
     readout_time = 2 * 4.2e-4  # Readout bandwidth
-    # Partial Fourier factor: 1: full sampling; 0: start with ky=0
-    part_fourier_factor = 9/16
+    # Partial Fourier factor: 1: full sampling; 0.5: sample from -kmax to 0
+    part_fourier_factor = 1
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
     spoil_factor = 1.5  # Spoiling gradient around the pi-pulse (rf180)
@@ -48,8 +39,8 @@ def main(plot: bool = False, write_seq: bool = False,
         159, 200, 200, 200, 138, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75,
         159, 200, 200, 200, 138, 75
     ]
-    flip_angles = flip_angles[:1]
-    tr_values_ms = tr_values_ms[:1]
+    flip_angles = flip_angles[:2]
+    tr_values_ms = tr_values_ms[:2]
     # Convert from milliseconds to seconds for the sequence timing
     tr_values = [tr_ms / 1000.0 for tr_ms in tr_values_ms]
 
@@ -204,16 +195,32 @@ def main(plot: bool = False, write_seq: bool = False,
     gy_blipdownup.waveform = gy_blipdownup.waveform * pe_enable
 
     # Phase encoding and partial Fourier
-    # PE steps prior to ky=0, excluding the central line
-    # Ny_pre = round(part_fourier_factor * Ny / 2 - 1)
-    # Ny_pre = round(part_fourier_factor * Ny / 2 - 1)
+    # MODIFIED: Always start from maximum negative k-space (-kmax)
+    # For full k-space acquisition (part_fourier_factor=1):
+    # - Ny_pre = Ny/2 - 1 lines before ky=0 (excluding center line)
+    # - Ny_post = Ny/2 + 1 lines after and including ky=0
+    # For partial Fourier, we keep Ny_pre the same but adjust Ny_post based on factor
+    
+    # Ensure part_fourier_factor is at least 0.5
+    assert part_fourier_factor >= 0.5, "Partial Fourier factor must be at least 0.5"
+    
+    # Calculate number of lines before k-space center (excluding center)
     Ny_pre = round(Ny / 2 - 1)
-    # PE lines after the k-space center including the central line
-    Ny_post = round(part_fourier_factor * Ny / 2 + 1)
+    
+    # Calculate number of lines after k-space center (including center)
+    # For part_fourier_factor=1, this equals Ny/2 + 1
+    # For part_fourier_factor=0.5, this would equal 1 (just the center line)
+    Ny_post = max(1, round(part_fourier_factor * Ny - Ny_pre))
+    
+    # Total number of measured lines
     Ny_meas = Ny_pre + Ny_post
+    
+    print(f"Sampling {Ny_meas} lines: {Ny_pre} lines before center and {Ny_post} lines after/including center")
 
-    # Pre-phasing gradients
+    # Pre-phasing gradients - prepare to start at -kmax
     gx_pre = pp.make_trapezoid(channel='x', system=system, area=-gx.area / 2)
+    
+    # Always prephase to the most negative k-space line
     gy_pre = pp.make_trapezoid(channel='y', system=system, area=Ny_pre * delta_k)
 
     gx_pre, gy_pre = pp.align(right=gx_pre, left=gy_pre)
@@ -252,8 +259,6 @@ def main(plot: bool = False, write_seq: bool = False,
     # ======
     # CONSTRUCT SEQUENCE
     # ======
-    # Define sequence blocks
-    # Define sequence blocks
     for s in range(n_slices):
         # 1. INITIAL ADIABATIC INVERSION PULSE (once per slice)
         rf_inv, gz_inv, gzr_inv = pp.make_adiabatic_pulse(
@@ -303,7 +308,7 @@ def main(plot: bool = False, write_seq: bool = False,
             current_seq_blocks_duration += pp.calc_duration(rf180, gz180n, gx_pre, gy_pre)  # Refocusing + prep
             current_seq_blocks_duration += Ny_meas * pp.calc_duration(gx, adc)  # EPI readout
             current_seq_blocks_duration += pp.calc_duration(tr_spoiler)  # End spoiler
-            print(current_seq_blocks_duration)
+            print(f"TR {t+1}: Total sequence duration: {current_seq_blocks_duration:.6f} s")
 
             desired_tr = tr_values[t]  # Get the TR for this repetition in seconds
             additional_delay = desired_tr - current_seq_blocks_duration
@@ -311,10 +316,10 @@ def main(plot: bool = False, write_seq: bool = False,
             # Add a delay to achieve the desired TR if needed
             if additional_delay > 0:
                 seq.add_block(pp.make_delay(additional_delay))
+                print(f"Adding delay of {additional_delay:.6f} s to reach desired TR of {desired_tr:.6f} s")
             else:
                 print(
-                    f"Warning: TR {t} ({tr_values[t] * 1000:.1f} ms) is too short! Minimum possible TR is {current_seq_blocks_duration * 1000:.1f} ms")
-                # You could handle this by adjusting the TR value or allowing a shorter TR
+                    f"Warning: TR {t+1} ({tr_values[t] * 1000:.1f} ms) is too short! Minimum possible TR is {current_seq_blocks_duration * 1000:.1f} ms")
 
     # Check whether the timing of the sequence is correct
     ok, error_report = seq.check_timing()
