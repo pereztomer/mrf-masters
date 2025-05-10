@@ -6,7 +6,7 @@ import pypulseq as pp
 
 
 def main(plot: bool = False, write_seq: bool = False,
-         seq_filename: str = '6.5.25_epi_time_series_with_inversion_spoiler_gradient_half_fourier.seq'):
+         seq_filename: str = '7.5.25_epi_time_series_with_inversion_spoiler_gradient_half_fourier.seq'):
     # ======
     # SETUP
     # ======

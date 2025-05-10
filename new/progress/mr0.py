@@ -8,7 +8,7 @@ import numpy as np
 
 
 def main():
-    seq_file = r"1.5.25_epi_se_rs_time_series_with_inversion.seq"
+    seq_file = r"7.5.25_epi_time_series_with_inversion_spoiler_gradient_half_fourier.seq"
     seq = pp.Sequence()
     seq.read(seq_file)
     signal = mr0.util.simulate_2d(seq)
@@ -23,7 +23,7 @@ def main():
     graph = mr0.compute_graph(seq0, obj_p, 200, 1e-3)
     signal = mr0.execute_graph(graph, seq0, obj_p, print_progress=True)
 
-    reco = mr0.reco_adjoint(signal, seq0.get_kspace(), resolution=(128, 128, 1), FOV=(0.22, 0.22, 1))
+    reco = mr0.reco_adjoint(signal[:23552], seq0.get_kspace()[:23552], resolution=(128, 128, 1), FOV=(0.22, 0.22, 1))
     plt.figure()
     plt.subplot(121)
     plt.title("Magnitude")
