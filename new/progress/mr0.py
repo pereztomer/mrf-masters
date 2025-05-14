@@ -6,9 +6,22 @@ import matplotlib
 matplotlib.use('TkAgg')
 import numpy as np
 
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+
+import torch
+import numpy as np
+import matplotlib.pyplot as plt
+
+import torch
+import numpy as np
+from scipy.interpolate import griddata
+import matplotlib.pyplot as plt
+
 
 def main():
-    seq_file = r"7.5.25_epi_time_series_with_inversion_spoiler_gradient_half_fourier.seq"
+    seq_file = r"sequences/2025-05-14_epi_Nx_192_Ny_192_part_fourier_factor_1_repetetions_1.seq"
     seq = pp.Sequence()
     seq.read(seq_file)
     signal = mr0.util.simulate_2d(seq)
@@ -23,7 +36,10 @@ def main():
     graph = mr0.compute_graph(seq0, obj_p, 200, 1e-3)
     signal = mr0.execute_graph(graph, seq0, obj_p, print_progress=True)
 
-    reco = mr0.reco_adjoint(signal[:23552], seq0.get_kspace()[:23552], resolution=(128, 128, 1), FOV=(0.22, 0.22, 1))
+    # kspace = signal.reshape(184, 72)
+    # plt.imshow(torch.log(kspace.abs()+1))
+    # plt.show()
+    reco = mr0.reco_adjoint(signal, seq0.get_kspace(), resolution=(192, 192, 1), FOV=(0.22, 0.22, 1))
     plt.figure()
     plt.subplot(121)
     plt.title("Magnitude")

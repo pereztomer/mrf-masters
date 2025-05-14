@@ -3,19 +3,22 @@ import math
 import numpy as np
 
 import pypulseq as pp
+from datetime import date
+
+# Get the current date
+current_date = date.today()
 
 
-def main(plot: bool = False, write_seq: bool = False,
-         seq_filename: str = '7.5.25_epi_time_series_with_inversion_spoiler_gradient_half_fourier.seq'):
+def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     # ======
     # SETUP
     # ======
     fov = 220e-3  # Define FOV and resolution
-    Nx = 128
-    Ny = 128
+    Nx = 192
+    Ny = 192
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
-    TE = 0.15
+    TE = 0.2
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
     ro_os = 1  # Oversampling factor
     readout_time = 2 * 4.2e-4  # Readout bandwidth
@@ -39,8 +42,10 @@ def main(plot: bool = False, write_seq: bool = False,
         159, 200, 200, 200, 138, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75,
         159, 200, 200, 200, 138, 75
     ]
-    flip_angles = flip_angles[:2]
-    tr_values_ms = tr_values_ms[:2]
+    flip_angles = flip_angles[:1]
+    tr_values_ms = tr_values_ms[:1]
+    part_fourier_factor_flag = 1 if part_fourier_factor == 1 else 0
+    seq_filename = f"sequences/{current_date}_epi_Nx_{Nx}_Ny_{Ny}_part_fourier_factor_{part_fourier_factor_flag}_repetetions_{len(tr_values_ms)}"
     # Convert from milliseconds to seconds for the sequence timing
     tr_values = [tr_ms / 1000.0 for tr_ms in tr_values_ms]
 
@@ -200,26 +205,26 @@ def main(plot: bool = False, write_seq: bool = False,
     # - Ny_pre = Ny/2 - 1 lines before ky=0 (excluding center line)
     # - Ny_post = Ny/2 + 1 lines after and including ky=0
     # For partial Fourier, we keep Ny_pre the same but adjust Ny_post based on factor
-    
+
     # Ensure part_fourier_factor is at least 0.5
     assert part_fourier_factor >= 0.5, "Partial Fourier factor must be at least 0.5"
-    
+
     # Calculate number of lines before k-space center (excluding center)
     Ny_pre = round(Ny / 2 - 1)
-    
+
     # Calculate number of lines after k-space center (including center)
     # For part_fourier_factor=1, this equals Ny/2 + 1
     # For part_fourier_factor=0.5, this would equal 1 (just the center line)
     Ny_post = max(1, round(part_fourier_factor * Ny - Ny_pre))
-    
+
     # Total number of measured lines
     Ny_meas = Ny_pre + Ny_post
-    
+
     print(f"Sampling {Ny_meas} lines: {Ny_pre} lines before center and {Ny_post} lines after/including center")
 
     # Pre-phasing gradients - prepare to start at -kmax
     gx_pre = pp.make_trapezoid(channel='x', system=system, area=-gx.area / 2)
-    
+
     # Always prephase to the most negative k-space line
     gy_pre = pp.make_trapezoid(channel='y', system=system, area=Ny_pre * delta_k)
 
@@ -308,7 +313,7 @@ def main(plot: bool = False, write_seq: bool = False,
             current_seq_blocks_duration += pp.calc_duration(rf180, gz180n, gx_pre, gy_pre)  # Refocusing + prep
             current_seq_blocks_duration += Ny_meas * pp.calc_duration(gx, adc)  # EPI readout
             current_seq_blocks_duration += pp.calc_duration(tr_spoiler)  # End spoiler
-            print(f"TR {t+1}: Total sequence duration: {current_seq_blocks_duration:.6f} s")
+            print(f"TR {t + 1}: Total sequence duration: {current_seq_blocks_duration:.6f} s")
 
             desired_tr = tr_values[t]  # Get the TR for this repetition in seconds
             additional_delay = desired_tr - current_seq_blocks_duration
@@ -319,7 +324,7 @@ def main(plot: bool = False, write_seq: bool = False,
                 print(f"Adding delay of {additional_delay:.6f} s to reach desired TR of {desired_tr:.6f} s")
             else:
                 print(
-                    f"Warning: TR {t+1} ({tr_values[t] * 1000:.1f} ms) is too short! Minimum possible TR is {current_seq_blocks_duration * 1000:.1f} ms")
+                    f"Warning: TR {t + 1} ({tr_values[t] * 1000:.1f} ms) is too short! Minimum possible TR is {current_seq_blocks_duration * 1000:.1f} ms")
 
     # Check whether the timing of the sequence is correct
     ok, error_report = seq.check_timing()
