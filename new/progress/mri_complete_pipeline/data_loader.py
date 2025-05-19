@@ -1,10 +1,11 @@
 import h5py
 import numpy as np
 
+
 def load_mat_data(raw_data_path):
     """
     Load raw data and trajectory from .mat file
-    
+
     Returns:
         rawdata: Complex raw data array (184, 34, 384)
         ktraj_adc: K-space trajectory during ADC (3, 70656)
@@ -28,18 +29,19 @@ def load_mat_data(raw_data_path):
         t_ktraj = np.array(f['t_ktraj']).flatten()  # (98188,)
         t_excitation = np.array(f['t_excitation']).flatten()  # (3,)
         t_refocusing = np.array(f['t_refocusing']).flatten()  # (6,)
-    
+
     return rawdata, ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing
 
-def load_mr0_data(raw_data_path, phantom=None, phantom_path=None):
+
+def load_mr0_data(raw_data_path, seq_file, phantom_path="numerical_brain_cropped.mat"):
     """
     Load trajectory from .mat file and simulate raw data using MR0
-    
+
     Args:
         raw_data_path: Path to .mat file (for trajectory)
-        phantom: MR0 phantom object (optional)
-        phantom_path: Path to phantom file (optional)
-    
+        seq_file: Path to .seq file for MR0 simulation
+        phantom_path: Path to phantom .mat file (default: "numerical_brain_cropped.mat")
+
     Returns:
         rawdata: Simulated complex raw data array (184, 34, 384)
         ktraj_adc: K-space trajectory during ADC (3, 70656)
@@ -49,11 +51,9 @@ def load_mr0_data(raw_data_path, phantom=None, phantom_path=None):
         t_excitation: Excitation times (3,)
         t_refocusing: Refocusing times (6,)
     """
-    try:
-        import mr0
-    except ImportError:
-        raise ImportError("MR0 not installed. Install with: pip install mr0")
-    
+    import MRzeroCore as mr0
+    import torch
+
     with h5py.File(raw_data_path, 'r') as f:
         # Load trajectory data (same as mat data)
         ktraj_adc = np.array(f['ktraj_adc']).T  # (3, 70656)
@@ -62,37 +62,46 @@ def load_mr0_data(raw_data_path, phantom=None, phantom_path=None):
         t_ktraj = np.array(f['t_ktraj']).flatten()  # (98188,)
         t_excitation = np.array(f['t_excitation']).flatten()  # (3,)
         t_refocusing = np.array(f['t_refocusing']).flatten()  # (6,)
-        
+
         # Get original data dimensions for compatibility
         rawdata_real = np.array(f['rawdata']['real'])
         nADC, nCoils, nAcq = rawdata_real.shape
-    
-    # Create or load phantom
-    if phantom is not None:
-        phantom_obj = phantom
-    elif phantom_path is not None:
-        phantom_obj = mr0.load_phantom(phantom_path)
-    else:
-        # Default simple brain phantom
-        phantom_obj = mr0.brain_phantom(matrix_size=128)
-    
-    # Simulate k-space data using trajectory from .mat file
-    rawdata = mr0.simulate_epi(phantom_obj, ktraj_adc.T, t_adc, 
-                              num_coils=nCoils, num_acq=nAcq)
-    rawdata = rawdata.transpose(2, 1, 0)  # Match original format (184, 34, 384)
-    
+
+    # Load MR0 sequence and phantom
+    seq0 = mr0.Sequence.import_file(seq_file)
+    obj_p = mr0.VoxelGridPhantom.load_mat(phantom_path)
+    obj_p = obj_p.build()
+
+    # Simulate the sequence
+    graph = mr0.compute_graph(seq0.cuda(), obj_p.cuda(), 200, 1e-3)
+    signal = mr0.execute_graph(graph, seq0.cuda(), obj_p.cuda(), print_progress=True)
+
+    # Convert signal to rawdata format (you may need to adjust this based on signal structure)
+    # Signal comes as 2D array: (total_samples, coils) e.g., (70000, 1) or (70000, nCoils)
+    signal_np = signal.cpu().numpy()
+
+    # Signal shape is (total_samples, actual_coils)
+    total_samples, actual_coils = signal_np.shape
+
+    # Calculate number of acquisitions based on total samples and nADC
+    nAcq = total_samples // nADC
+
+    # Reshape signal to match expected rawdata format (nADC, nCoils, nAcq)
+    rawdata = signal_np.reshape(nADC, nAcq, actual_coils).transpose(0, 2, 1)  # (nADC, actual_coils, nAcq)
+
     return rawdata, ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing
 
-def load_data(raw_data_path, use_mr0=False, phantom=None, phantom_path=None):
+
+def load_data(raw_data_path, use_mr0=False, seq_file=None, phantom_path="numerical_brain_cropped.mat"):
     """
     Unified data loading function - agnostic to data source
-    
+
     Args:
         raw_data_path: Path to .mat file
         use_mr0: If True, simulate data with MR0; if False, load from .mat
-        phantom: MR0 phantom object (optional, only used if use_mr0=True)
-        phantom_path: Path to phantom file (optional, only used if use_mr0=True)
-    
+        seq_file: Path to .seq file (required if use_mr0=True)
+        phantom_path: Path to phantom .mat file (only used if use_mr0=True)
+
     Returns:
         rawdata: Complex raw data array (184, 34, 384)
         ktraj_adc: K-space trajectory during ADC (3, 70656)
@@ -103,6 +112,8 @@ def load_data(raw_data_path, use_mr0=False, phantom=None, phantom_path=None):
         t_refocusing: Refocusing times (6,)
     """
     if use_mr0:
-        return load_mr0_data(raw_data_path, phantom, phantom_path)
+        if seq_file is None:
+            raise ValueError("seq_file must be provided when use_mr0=True")
+        return load_mr0_data(raw_data_path, seq_file, phantom_path)
     else:
         return load_mat_data(raw_data_path)
