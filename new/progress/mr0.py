@@ -18,7 +18,6 @@ import torch
 import numpy as np
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
-from mr_utils import epi_resample_to_grid
 import scipy.io as sio
 
 
