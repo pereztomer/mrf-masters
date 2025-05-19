@@ -9,15 +9,15 @@ from datetime import date
 current_date = date.today()
 
 # ====== ACCELERATION FACTOR ======
-acceleration_factor = 3  # R=1 means fully sampled; R>1 means skip every R-th line
+acceleration_factor = 1  # R=1 means fully sampled; R>1 means skip every R-th line
 
 def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     # ======
     # SETUP
     # ======
     fov = 220e-3  # Define FOV and resolution
-    Nx = 192
-    Ny = 192
+    Nx = 128
+    Ny = 128
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
     TE = 0.2
@@ -25,7 +25,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     ro_os = 1  # Oversampling factor
     readout_time = 2 * 4.2e-4  # Readout bandwidth
     # Partial Fourier factor: 1: full sampling; 0.5: sample from -kmax to 0
-    part_fourier_factor = 9/16
+    part_fourier_factor = 1
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
     spoil_factor = 1.5  # Spoiling gradient around the pi-pulse (rf180)
@@ -44,8 +44,8 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         159, 200, 200, 200, 138, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75,
         159, 200, 200, 200, 138, 75
     ]
-    flip_angles = flip_angles[:2]
-    tr_values_ms = tr_values_ms[:2]
+    flip_angles = flip_angles[:1]
+    tr_values_ms = tr_values_ms[:1]
     part_fourier_factor_flag = 1 if part_fourier_factor == 1 else 0
     seq_filename = f"sequences/{current_date}_epi_Nx_{Nx}_Ny_{Ny}_part_fourier_factor_{part_fourier_factor_flag}_R{acceleration_factor}_repetetions_{len(tr_values_ms)}.seq"
     # Convert from milliseconds to seconds for the sequence timing
