@@ -33,7 +33,9 @@ def load_mat_data(raw_data_path):
     return rawdata, ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing
 
 
-def load_mr0_data(raw_data_path, seq_file, phantom_path="numerical_brain_cropped.mat"):
+
+def load_mr0_data(raw_data_path, seq_file, phantom_path="numerical_brain_cropped.mat", use_coil_maps=False,
+                  num_coils=None):
     """
     Load trajectory from .mat file and simulate raw data using MR0
 
@@ -65,12 +67,31 @@ def load_mr0_data(raw_data_path, seq_file, phantom_path="numerical_brain_cropped
 
         # Get original data dimensions for compatibility
         rawdata_real = np.array(f['rawdata']['real'])
+        rawdata_real = rawdata_real.transpose(2, 1, 0)  # (184, 34, 384)
         nADC, nCoils, nAcq = rawdata_real.shape
 
     # Load MR0 sequence and phantom
     seq0 = mr0.Sequence.import_file(seq_file)
     obj_p = mr0.VoxelGridPhantom.load_mat(phantom_path)
-    obj_p = obj_p.build()
+    obj_p = obj_p.interpolate(128, 128, 1)
+
+    # Add coil sensitivity maps if requested
+    if use_coil_maps and num_coils is not None:
+        from sensitivity_maps import create_gaussian_sensitivities, normalize_sensitivities
+
+        # Create coil sensitivity maps using our sensitivity_maps module
+        resolution = (128, 128)
+        sens_maps_2d = create_gaussian_sensitivities(resolution[0], num_coils)
+        sens_maps_2d = normalize_sensitivities(sens_maps_2d)
+
+        # Convert to MR0 format: (num_coils, x, y, z)
+        coil_maps = np.zeros((num_coils, resolution[0], resolution[1], 1), dtype=complex)
+        for c in range(num_coils):
+            coil_maps[c, :, :, 0] = sens_maps_2d[:, :, c]
+
+        # Set the coil maps in the phantom
+        obj_p.coil_sens = torch.Tensor(coil_maps)
+        obj_p = obj_p.build()
 
     # Simulate the sequence
     graph = mr0.compute_graph(seq0.cuda(), obj_p.cuda(), 200, 1e-3)
@@ -87,12 +108,12 @@ def load_mr0_data(raw_data_path, seq_file, phantom_path="numerical_brain_cropped
     nAcq = total_samples // nADC
 
     # Reshape signal to match expected rawdata format (nADC, nCoils, nAcq)
-    rawdata = signal_np.reshape(nADC, nAcq, actual_coils).transpose(0, 2, 1)  # (nADC, actual_coils, nAcq)
+    rawdata = signal_np.reshape(nADC, nAcq, actual_coils, order='F').transpose(0, 2, 1)  # (nADC, actual_coils, nAcq)
 
     return rawdata, ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing
 
-
-def load_data(raw_data_path, use_mr0=False, seq_file=None, phantom_path="numerical_brain_cropped.mat"):
+def load_data(raw_data_path, use_mr0=False, seq_file=None, phantom_path="numerical_brain_cropped.mat",
+              use_coil_maps=False, num_coils=None):
     """
     Unified data loading function - agnostic to data source
 
@@ -101,6 +122,8 @@ def load_data(raw_data_path, use_mr0=False, seq_file=None, phantom_path="numeric
         use_mr0: If True, simulate data with MR0; if False, load from .mat
         seq_file: Path to .seq file (required if use_mr0=True)
         phantom_path: Path to phantom .mat file (only used if use_mr0=True)
+        use_coil_maps: Whether to add coil sensitivity maps (only used if use_mr0=True)
+        num_coils: Number of coils for sensitivity maps (only used if use_mr0=True and use_coil_maps=True)
 
     Returns:
         rawdata: Complex raw data array (184, 34, 384)
@@ -114,6 +137,6 @@ def load_data(raw_data_path, use_mr0=False, seq_file=None, phantom_path="numeric
     if use_mr0:
         if seq_file is None:
             raise ValueError("seq_file must be provided when use_mr0=True")
-        return load_mr0_data(raw_data_path, seq_file, phantom_path)
+        return load_mr0_data(raw_data_path, seq_file, phantom_path, use_coil_maps, num_coils)
     else:
         return load_mat_data(raw_data_path)
