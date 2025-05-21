@@ -9,7 +9,7 @@ from datetime import date
 current_date = date.today()
 
 # ====== ACCELERATION FACTOR ======
-acceleration_factor = 1  # R=1 means fully sampled; R>1 means skip every R-th line
+acceleration_factor = 3  # R=1 means fully sampled; R>1 means skip every R-th line
 
 def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     # ======
@@ -21,12 +21,11 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
     TE = 0.2
-    # TE = 18 / 1000
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
     ro_os = 1  # Oversampling factor
     readout_time = 2 * 4.2e-4  # Readout bandwidth
     # Partial Fourier factor: 1: full sampling; 0.5: sample from -kmax to 0
-    part_fourier_factor = 1
+    part_fourier_factor = 9/16
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
     spoil_factor = 1.5  # Spoiling gradient around the pi-pulse (rf180)
@@ -45,11 +44,10 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         159, 200, 200, 200, 138, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75,
         159, 200, 200, 200, 138, 75
     ]
-
     flip_angles = flip_angles[:1]
     tr_values_ms = tr_values_ms[:1]
     part_fourier_factor_flag = 1 if part_fourier_factor == 1 else 0
-    seq_filename = f"sequences/{current_date}_epi_Nx_{Nx}_Ny_{Ny}_part_fourier_factor_{part_fourier_factor_flag}_R{acceleration_factor}_repetetions_{len(tr_values_ms)}.seq"
+    seq_filename = f"sequences/{current_date}_epi_Nx_{Nx}_Ny_{Ny}_part_fourier_factor_{part_fourier_factor_flag}_R{acceleration_factor}_repetetions_{len(tr_values_ms)}_multi_shot.seq"
     # Convert from milliseconds to seconds for the sequence timing
     tr_values = [tr_ms / 1000.0 for tr_ms in tr_values_ms]
 
@@ -75,17 +73,14 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     B0 = 2.89
     sat_ppm = -3.45
     sat_freq = sat_ppm * 1e-6 * B0 * system.gamma
-
     rf_fs = pp.make_gauss_pulse(
         flip_angle=110 * np.pi / 180,
         system=system,
+        duration=8e-3,
+        bandwidth=np.abs(sat_freq),
         freq_offset=sat_freq,
         delay=system.rf_dead_time,
-        # Only specify bandwidth if you want to constrain it
-        bandwidth=np.abs(sat_freq),
     )
-
-
     gz_fs = pp.make_trapezoid(channel='z', system=system, delay=pp.calc_duration(rf_fs), area=1 / 1e-4)
 
     tr_spoil_factor = 2.0  # Adjust this value as needed for sufficient dephasing
@@ -109,6 +104,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         channel='z',  # Apply along slice selection direction
         system=system,
         area=tr_spoil_factor * gz.area,  # Scale based on slice selection gradient
+        duration=3e-3  # Typical duration, adjust as needed
     )
 
     # Create 90 degree slice refocusing pulse and gradients
@@ -157,8 +153,8 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     k_width = Nx * delta_k
 
     # Phase blip in shortest possible time
-    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k)
-    blip_duration = pp.calc_duration(gy)
+    blip_duration = np.ceil(2 * np.sqrt(delta_k / system.max_slew) / 10e-6 / 2) * 10e-6 * 2
+    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k, duration=blip_duration)
 
     extra_area = blip_duration / 2 * blip_duration / 2 * system.max_slew
     gx = pp.make_trapezoid(
@@ -233,28 +229,115 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     # CONSTRUCT SEQUENCE
     # ======
     for s in range(n_slices):
-        rf_inv, gz_inv, gzr_inv = pp.make_adiabatic_pulse(
-            pulse_type='hypsec',
-            duration=4e-3,
-            delay=system.rf_dead_time,
-            system=system,
-            use='inversion',
-            slice_thickness=slice_thickness,
-            return_gz=True
-        )
-        rf_inv.freq_offset = gz_inv.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
-        seq.add_block(rf_inv, gz_inv)
-        seq.add_block(gzr_inv)
-        seq.add_block(pp.make_delay(10e-3))
+        # ======
+        # MULTI-SHOT EPI (WHEN R > 1)
+        # ======
+        if acceleration_factor > 1:
+            print(f"Adding multi-shot EPI with {acceleration_factor} shots")
+            
+            for shot in range(acceleration_factor):
+                # Calculate phase encoding indices for this shot
+                pe_indices_shot = pe_indices[shot::acceleration_factor]
+                Ny_meas_shot = len(pe_indices_shot)
+                print(f"  Shot {shot+1}: sampling {Ny_meas_shot} lines")
+                
+                # Update pre-encoding gradients for this shot
+                shot_pe_start_idx = pe_indices_shot[0] - 1  # Convert to 0-based indexing
+                shot_pe_lines_before_center = shot_pe_start_idx
+                gy_pre_shot = pp.make_trapezoid(channel='y', system=system, area=shot_pe_lines_before_center * delta_k)
+                gy_pre_shot = pp.make_trapezoid('y', system=system, area=gy_pre_shot.area, duration=pp.calc_duration(gx_pre, gy_pre_shot))
+                gy_pre_shot.amplitude = gy_pre_shot.amplitude * pe_enable
+                gy_pre_shot.delay = pp.calc_duration(rf180)
+                
+                # Adiabatic inversion pulse
+                rf_inv, gz_inv, gzr_inv = pp.make_adiabatic_pulse(
+                    pulse_type='hypsec',
+                    duration=4e-3,
+                    delay=system.rf_dead_time,
+                    system=system,
+                    use='inversion',
+                    slice_thickness=slice_thickness,
+                    return_gz=True
+                )
+                rf_inv.freq_offset = gz_inv.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
+                seq.add_block(rf_inv, gz_inv)
+                seq.add_block(gzr_inv)
+                seq.add_block(pp.make_delay(40e-3))
+                
+                # Fat saturation
+                seq.add_block(rf_fs, gz_fs)
+                
+                # Excitation using first flip angle
+                rf_shot = rf_pulses[0]
+                rf_shot.freq_offset = gz.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
+                rf180.freq_offset = gz180.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
+                seq.add_block(rf_shot, gz, trig)
+                seq.add_block(pp.make_delay(delay_TE1))
+                seq.add_block(rf180, gz180n, pp.make_delay(delay_TE2), gx_pre, gy_pre_shot)
+                
+                # EPI readout for this shot
+                gx_shot = gx  # Use a copy of the readout gradient
+                for idx, i in enumerate(pe_indices_shot):
+                    if idx == 0:
+                        seq.add_block(gx_shot, gy_blipup, adc)
+                    elif idx == len(pe_indices_shot) - 1:
+                        seq.add_block(gx_shot, gy_blipdown, adc)
+                    else:
+                        seq.add_block(gx_shot, gy_blipdownup, adc)
+                    gx_shot.amplitude = -gx_shot.amplitude
+                
+                # TR spoiler
+                seq.add_block(tr_spoiler)
+                
+                # Calculate timing and add delay to reach desired TR
+                shot_duration = pp.calc_duration(rf_shot, gz)
+                shot_duration += delay_TE1
+                shot_duration += pp.calc_duration(rf180, gz180n, gx_pre, gy_pre_shot)
+                shot_duration += Ny_meas_shot * pp.calc_duration(gx, adc)
+                shot_duration += pp.calc_duration(tr_spoiler)
+                
+                desired_tr_shot = tr_values[0]
+                additional_delay_shot = desired_tr_shot - shot_duration
+                
+                if additional_delay_shot > 0:
+                    seq.add_block(pp.make_delay(additional_delay_shot))
+                    print(f"    Adding delay of {additional_delay_shot:.6f} s to reach desired TR of {desired_tr_shot:.6f} s")
+                else:
+                    print(f"    Warning: Multi-shot TR is too short! Minimum possible TR is {shot_duration * 1000:.1f} ms")
+            
+            # Add 5000ms delay before main sequence
+            seq.add_block(pp.make_delay(5.0))
+            print("Added 5000ms delay after multi-shot EPI")
 
+        # ======
+        # MAIN TIME SERIES SEQUENCE
+        # ======
         for t in range(steps_number):
+            # Adiabatic inversion pulse
+            rf_inv, gz_inv, gzr_inv = pp.make_adiabatic_pulse(
+                pulse_type='hypsec',
+                duration=4e-3,
+                delay=system.rf_dead_time,
+                system=system,
+                use='inversion',
+                slice_thickness=slice_thickness,
+                return_gz=True
+            )
+            rf_inv.freq_offset = gz_inv.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
+            seq.add_block(rf_inv, gz_inv)
+            seq.add_block(gzr_inv)
+            seq.add_block(pp.make_delay(40e-3))
+
+            # Fat saturation
             seq.add_block(rf_fs, gz_fs)
+            
+            # Excitation and refocusing
             rf.freq_offset = gz.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
             rf180.freq_offset = gz180.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
             seq.add_block(rf_pulses[t], gz, trig)
             ###########################################
             # this delay_TE1 is causing the huge delay! need to fix this with the currect TE!
-            seq.add_block(pp.make_delay(delay_TE1))
+            # seq.add_block(pp.make_delay(delay_TE1))
             ############################################
             seq.add_block(rf180, gz180n, pp.make_delay(delay_TE2), gx_pre, gy_pre)
 
@@ -287,7 +370,6 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
                 print(
                     f"Warning: TR {t + 1} ({tr_values[t] * 1000:.1f} ms) is too short! Minimum possible TR is {current_seq_blocks_duration * 1000:.1f} ms")
 
-        break
     ok, error_report = seq.check_timing()
     if ok:
         print('Timing check passed successfully')
@@ -309,4 +391,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     return seq
 
 if __name__ == '__main__':
-    main(plot=True, write_seq=True) 
+    """
+    Dont use yet! need to fix timing issues with the non-multi shot version
+    """
+    main(plot=True, write_seq=True)

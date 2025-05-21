@@ -22,17 +22,16 @@ import scipy.io as sio
 
 
 def main():
-    # seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\test_3_epi_se_rs\28.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_sleq_150\28.4.25_epi_se_rs_Nx_128_Ny_128_pypulseq_max_sleq_150.seq"
 
-    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\progress\sequences\2025-05-15_epi_Nx_128_Ny_128_part_fourier_factor_1_R1_repetetions_1.seq"
+    seq_file = r"sequences/test.seq"
     # for plotting graph of the signal evolotion
-    # seq = pp.Sequence()
-    # seq.read(seq_file)
-    # signal = mr0.util.simulate_2d(seq)
-    # seq.plot(plot_now=False)
-    # mr0.util.insert_signal_plot(seq=seq, signal=signal.numpy())
-    # plt.show()
-
+    seq = pp.Sequence()
+    seq.read(seq_file)
+    signal = mr0.util.simulate_2d(seq)
+    seq.plot(plot_now=False)
+    mr0.util.insert_signal_plot(seq=seq, signal=signal.numpy())
+    plt.show()
+    exit()
     seq0 = mr0.Sequence.import_file(seq_file)
     obj_p = mr0.VoxelGridPhantom.load_mat("numerical_brain_cropped.mat")
     obj_p = obj_p.build()
