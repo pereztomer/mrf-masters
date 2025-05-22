@@ -1,5 +1,8 @@
 import h5py
 import numpy as np
+import MRzeroCore as mr0
+import torch
+import pypulseq as pp
 
 
 def load_mat_data(raw_data_path):
@@ -8,12 +11,6 @@ def load_mat_data(raw_data_path):
 
     Returns:
         rawdata: Complex raw data array (184, 34, 384)
-        ktraj_adc: K-space trajectory during ADC (3, 70656)
-        t_adc: Time points during ADC (70656,)
-        ktraj: Full k-space trajectory (3, 98188)
-        t_ktraj: Time points for full trajectory (98188,)
-        t_excitation: Excitation times (3,)
-        t_refocusing: Refocusing times (6,)
     """
     with h5py.File(raw_data_path, 'r') as f:
         # Load raw data with transpose
@@ -22,65 +19,27 @@ def load_mat_data(raw_data_path):
         rawdata_temp = rawdata_real + 1j * rawdata_imag
         rawdata = rawdata_temp.transpose(2, 1, 0)  # (184, 34, 384)
 
-        # Load trajectory data with transpose for 2D arrays
-        ktraj_adc = np.array(f['ktraj_adc']).T  # (3, 70656)
-        t_adc = np.array(f['t_adc']).flatten()  # (70656,)
-        ktraj = np.array(f['ktraj']).T  # (3, 98188)
-        t_ktraj = np.array(f['t_ktraj']).flatten()  # (98188,)
-        t_excitation = np.array(f['t_excitation']).flatten()  # (3,)
-        t_refocusing = np.array(f['t_refocusing']).flatten()  # (6,)
-
-    return rawdata, ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing
+    return rawdata
 
 
+def load_mr0_data(seq_file, phantom_path="numerical_brain_cropped.mat", use_coil_maps=False, num_coils=None):
+    seq = pp.Sequence()
+    seq.read(seq_file)
 
-def load_mr0_data(raw_data_path, seq_file, phantom_path="numerical_brain_cropped.mat", use_coil_maps=False,
-                  num_coils=None):
-    """
-    Load trajectory from .mat file and simulate raw data using MR0
-
-    Args:
-        raw_data_path: Path to .mat file (for trajectory)
-        seq_file: Path to .seq file for MR0 simulation
-        phantom_path: Path to phantom .mat file (default: "numerical_brain_cropped.mat")
-
-    Returns:
-        rawdata: Simulated complex raw data array (184, 34, 384)
-        ktraj_adc: K-space trajectory during ADC (3, 70656)
-        t_adc: Time points during ADC (70656,)
-        ktraj: Full k-space trajectory (3, 98188)
-        t_ktraj: Time points for full trajectory (98188,)
-        t_excitation: Excitation times (3,)
-        t_refocusing: Refocusing times (6,)
-    """
-    import MRzeroCore as mr0
-    import torch
-
-    with h5py.File(raw_data_path, 'r') as f:
-        # Load trajectory data (same as mat data)
-        ktraj_adc = np.array(f['ktraj_adc']).T  # (3, 70656)
-        t_adc = np.array(f['t_adc']).flatten()  # (70656,)
-        ktraj = np.array(f['ktraj']).T  # (3, 98188)
-        t_ktraj = np.array(f['t_ktraj']).flatten()  # (98188,)
-        t_excitation = np.array(f['t_excitation']).flatten()  # (3,)
-        t_refocusing = np.array(f['t_refocusing']).flatten()  # (6,)
-
-        # Get original data dimensions for compatibility
-        rawdata_real = np.array(f['rawdata']['real'])
-        rawdata_real = rawdata_real.transpose(2, 1, 0)  # (184, 34, 384)
-        nADC, nCoils, nAcq = rawdata_real.shape
-
+    Nx = int(seq.get_definition('Nx'))
+    Ny = int(seq.get_definition('Ny'))
+    freq_encoding_steps = int(seq.get_definition('FrequencyEncodingSteps'))
     # Load MR0 sequence and phantom
     seq0 = mr0.Sequence.import_file(seq_file)
     obj_p = mr0.VoxelGridPhantom.load_mat(phantom_path)
-    obj_p = obj_p.interpolate(128, 128, 1)
+    obj_p = obj_p.interpolate(int(Nx), int(Ny), 1)
 
     # Add coil sensitivity maps if requested
     if use_coil_maps and num_coils is not None:
         from sensitivity_maps import create_gaussian_sensitivities, normalize_sensitivities
 
         # Create coil sensitivity maps using our sensitivity_maps module
-        resolution = (128, 128)
+        resolution = (int(Nx), int(Ny))
         sens_maps_2d = create_gaussian_sensitivities(resolution[0], num_coils)
         sens_maps_2d = normalize_sensitivities(sens_maps_2d)
 
@@ -105,12 +64,14 @@ def load_mr0_data(raw_data_path, seq_file, phantom_path="numerical_brain_cropped
     total_samples, actual_coils = signal_np.shape
 
     # Calculate number of acquisitions based on total samples and nADC
-    nAcq = total_samples // nADC
+    nAcq = total_samples // freq_encoding_steps
 
     # Reshape signal to match expected rawdata format (nADC, nCoils, nAcq)
-    rawdata = signal_np.reshape(nADC, nAcq, actual_coils, order='F').transpose(0, 2, 1)  # (nADC, actual_coils, nAcq)
+    rawdata = signal_np.reshape(int(freq_encoding_steps), nAcq, actual_coils, order='F').transpose(0, 2,
+                                                                                              1)  # (nADC, actual_coils, nAcq)
 
-    return rawdata, ktraj_adc, t_adc, ktraj, t_ktraj, t_excitation, t_refocusing
+    return rawdata
+
 
 def load_data(raw_data_path, use_mr0=False, seq_file=None, phantom_path="numerical_brain_cropped.mat",
               use_coil_maps=False, num_coils=None):
@@ -127,16 +88,16 @@ def load_data(raw_data_path, use_mr0=False, seq_file=None, phantom_path="numeric
 
     Returns:
         rawdata: Complex raw data array (184, 34, 384)
-        ktraj_adc: K-space trajectory during ADC (3, 70656)
-        t_adc: Time points during ADC (70656,)
-        ktraj: Full k-space trajectory (3, 98188)
-        t_ktraj: Time points for full trajectory (98188,)
-        t_excitation: Excitation times (3,)
-        t_refocusing: Refocusing times (6,)
     """
+    seq = pp.Sequence()
+    seq.read(seq_file)
+    # k_traj_adc, k_traj, t_excitation, t_refocusing, t_adc = seq.calculate_kspace(trajectory_delay=traj_recon_delay)
+    k_traj_adc, k_traj, t_excitation, t_refocusing, t_adc = seq.calculate_kspace()
     if use_mr0:
         if seq_file is None:
             raise ValueError("seq_file must be provided when use_mr0=True")
-        return load_mr0_data(raw_data_path, seq_file, phantom_path, use_coil_maps, num_coils)
+        raw_data = load_mr0_data(seq_file, phantom_path, use_coil_maps, num_coils)
     else:
-        return load_mat_data(raw_data_path)
+        raw_data = load_mat_data(raw_data_path)
+
+    return raw_data, k_traj_adc, t_adc

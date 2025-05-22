@@ -384,8 +384,26 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         seq.plot()
 
     if write_seq:
+        # Calculate resolution
+        resolution = fov / Nx  # meters per pixel
+        
+        # Set sequence metadata
         seq.set_definition(key='FOV', value=[fov, fov, slice_thickness])
         seq.set_definition(key='Name', value='epi')
+        seq.set_definition(key='Resolution', value=[resolution, resolution, slice_thickness])
+        seq.set_definition(key='Ny', value=Ny)
+        seq.set_definition(key='Nx', value=Nx)
+        seq.set_definition(key='TimeSteps', value=steps_number)
+        seq.set_definition(key='FrequencyEncodingSteps', value=adc_samples)
+        seq.set_definition(key='AccelerationFactor', value=acceleration_factor)
+        seq.set_definition(key='PartialFourierFactor', value=part_fourier_factor)
+        seq.set_definition(key='EchoTime', value=TE)
+        seq.set_definition(key='RepetitionTime', value=tr_values)
+        seq.set_definition(key='FlipAngles', value=flip_angles)
+        seq.set_definition(key='NySampled', value=Ny_meas)
+        seq.set_definition(key='NyPre', value=Ny_pre)
+        seq.set_definition(key='NyPost', value=Ny_post)
+        
         seq.write(seq_filename)
 
     return seq
