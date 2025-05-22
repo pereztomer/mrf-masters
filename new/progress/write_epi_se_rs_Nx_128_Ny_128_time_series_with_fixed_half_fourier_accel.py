@@ -9,7 +9,7 @@ from datetime import date
 current_date = date.today()
 
 # ====== ACCELERATION FACTOR ======
-acceleration_factor = 1  # R=1 means fully sampled; R>1 means skip every R-th line
+acceleration_factor = 3  # R=1 means fully sampled; R>1 means skip every R-th line
 
 def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     # ======
@@ -26,7 +26,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     ro_os = 1  # Oversampling factor
     readout_time = 2 * 4.2e-4  # Readout bandwidth
     # Partial Fourier factor: 1: full sampling; 0.5: sample from -kmax to 0
-    part_fourier_factor = 1
+    part_fourier_factor = 9/16
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
     spoil_factor = 1.5  # Spoiling gradient around the pi-pulse (rf180)
@@ -48,8 +48,11 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
 
     flip_angles = flip_angles[:1]
     tr_values_ms = tr_values_ms[:1]
-    part_fourier_factor_flag = 1 if part_fourier_factor == 1 else 0
-    seq_filename = f"sequences/{current_date}_epi_Nx_{Nx}_Ny_{Ny}_part_fourier_factor_{part_fourier_factor_flag}_R{acceleration_factor}_repetetions_{len(tr_values_ms)}.seq"
+    if part_fourier_factor == 1:
+        seq_filename = f"sequences/{current_date}_epi_Nx{Nx}_Ny{Ny}_R{acceleration_factor}_repetitions_{len(tr_values_ms)}"
+    else:
+        seq_filename = f"sequences/{current_date}_epi_Nx{Nx}_Ny{Ny}_R{acceleration_factor}_part_fourier_repetitions_{len(tr_values_ms)}"
+
     # Convert from milliseconds to seconds for the sequence timing
     tr_values = [tr_ms / 1000.0 for tr_ms in tr_values_ms]
 

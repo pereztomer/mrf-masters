@@ -23,15 +23,15 @@ import scipy.io as sio
 
 def main():
 
-    seq_file = r"sequences/test.seq"
-    # for plotting graph of the signal evolotion
-    seq = pp.Sequence()
-    seq.read(seq_file)
-    signal = mr0.util.simulate_2d(seq)
-    seq.plot(plot_now=False)
-    mr0.util.insert_signal_plot(seq=seq, signal=signal.numpy())
-    plt.show()
-    exit()
+    seq_file = r"sequences/2025-05-22_epi_Nx192_Ny192_R3_part_fourier_repetitions_1.seq"
+    # # for plotting graph of the signal evolotion
+    # seq = pp.Sequence()
+    # seq.read(seq_file)
+    # signal = mr0.util.simulate_2d(seq)
+    # seq.plot(plot_now=False)
+    # mr0.util.insert_signal_plot(seq=seq, signal=signal.numpy())
+    # plt.show()
+    # exit()
     seq0 = mr0.Sequence.import_file(seq_file)
     obj_p = mr0.VoxelGridPhantom.load_mat("numerical_brain_cropped.mat")
     obj_p = obj_p.build()

@@ -5,10 +5,9 @@ from epi_pipeline import run_epi_pipeline
 raw_data_path = r"C:\Users\perez\Desktop\test\epi\epi_data2.mat"
 
 use_mr0_simulator = True  # Set to True to use MR0 simulator
-# seq_file = r'C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\test_3_epi_se_rs\4.5.25_epi_time_series_with_inversion_spoiler_gradient_v3\4.5.25_epi_time_series_with_inversion_spoiler_gradient_v3.seq';
+seq_file = r'C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\test_3_epi_se_rs\4.5.25_epi_time_series_with_inversion_spoiler_gradient_v3\4.5.25_epi_time_series_with_inversion_spoiler_gradient_v3.seq';
 
 # seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\progress\sequences\2025-05-20_epi_Nx_192_Ny_192_part_fourier_factor_1_R3_repetetions_1.seq"
-seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\progress\sequences\2025-05-20_epi_Nx_192_Ny_192_part_fourier_factor_1_repetetions_1.seq"
 phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\progress\numerical_brain_cropped.mat"
 use_phase_correction = True
 
