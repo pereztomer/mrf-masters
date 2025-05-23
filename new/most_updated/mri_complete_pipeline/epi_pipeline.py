@@ -2,6 +2,8 @@ import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 import pypulseq as pp
+import os
+from partial_fourier_recon import pocs_pf
 
 def calculate_fov_parameters(ktraj_adc, nADC):
     """Calculate FOV and matrix size parameters from k-space trajectory"""
@@ -84,6 +86,42 @@ def resample_data(rawdata, ktraj_adc, t_adc, Nx):
     return data_resampled, ktraj_resampled, t_adc_resampled
 
 
+def create_full_kspace(data_resampled, ktraj_resampled, Ny, delta_ky):
+    """
+    Create full k-space matrix from resampled data using k-space coordinates
+
+    Args:
+        data_resampled: Resampled data (Nx, nCoils, Ny_sampled)
+        ktraj_resampled: K-space coordinates (3, Nx, Ny_sampled)
+        Ny: Full matrix size in y direction
+        delta_ky: K-space spacing in y direction
+
+    Returns:
+        data_full_kspace: Full k-space with zeros in non-acquired regions
+    """
+
+    Nx, nCoils, Ny_sampled = data_resampled.shape
+
+    ky_max = ktraj_resampled[1, Nx // 2, 0]
+
+
+    # Initialize full k-space with consistent dimension ordering
+    data_full_kspace = np.zeros((Nx, nCoils, Ny), dtype=complex)
+
+    # Fill the acquired data
+    for row in range(Ny_sampled):
+        # Get ky for this acquisition (use middle of readout since it should be constant)
+        ky = ktraj_resampled[1, Nx // 2, row]
+
+        # Calculate the ky index directly
+        ky_idx = int(np.round((ky_max - ky) / delta_ky))
+
+        # Place the entire readout at this ky position
+        data_full_kspace[:, :, ky_idx] = data_resampled[:, :, row]
+
+    return data_full_kspace
+
+
 def calculate_phase_correction(data_resampled):
     """Calculate phase correction coefficients"""
     data_odd = np.fft.ifftshift(np.fft.ifft(np.fft.ifftshift(data_resampled[:, :, 0::2], axes=0), axis=0), axes=0)
@@ -139,97 +177,150 @@ def reconstruct_images(data_pc, Ny_sampled, Ny):
     return sos_image, data_xy
 
 
-def plot_kspace_data(data_resampled):
-    """Plot k-space data"""
-    plt.figure(figsize=(10, 10))
-    plt.imshow(np.abs(data_resampled[:, 0, :]).T, aspect='equal', cmap='gray')
-    plt.title('EPI k-space data')
-    plt.xlabel('kx samples')
-    plt.ylabel('Acquisitions')
-    plt.colorbar()
+def plot_kspace_data(data_pc, output_path=None):
+    """Plot phase and magnitude of hybrid (x/ky) data for all coils"""
+    n_coils = data_pc.shape[1]
+
+    # Calculate grid dimensions
+    n_cols = 2  # One column for phase, one for magnitude
+    n_rows = n_coils
+
+    # Create figure with appropriate size
+    plt.figure(figsize=(12, 4 * n_rows))
+
+    for coil_idx in range(n_coils):
+        # Plot phase
+        plt.subplot(n_rows, n_cols, 2 * coil_idx + 1)
+        plt.imshow(np.angle(data_pc[:, coil_idx, :]).T, aspect='equal', cmap='hsv')
+        plt.title(f'Phase - Coil {coil_idx + 1}')
+        plt.xlabel('kx samples')
+        plt.ylabel('Acquisitions')
+        plt.colorbar()
+
+        # Plot magnitude
+        plt.subplot(n_rows, n_cols, 2 * coil_idx + 2)
+        plt.imshow(np.abs(data_pc[:, coil_idx, :]).T, aspect='equal', cmap='gray')
+        plt.title(f'Magnitude - Coil {coil_idx + 1}')
+        plt.xlabel('kx samples')
+        plt.ylabel('Acquisitions')
+        plt.colorbar()
+
+    plt.tight_layout()
+
+    # Save figure if output directory is provided
+    if output_path is not None:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+
     plt.show()
+    plt.close()
 
 
-def plot_phase_data(data_pc):
-    """Plot phase of hybrid (x/ky) data"""
-    plt.figure(figsize=(10, 8))
-    plt.imshow(np.angle(data_pc[:, 0, :]).T, aspect='equal', cmap='hsv')
-    plt.title('phase of hybrid (x/ky) data')
-    plt.xlabel('kx samples')
-    plt.ylabel('Acquisitions')
-    plt.colorbar()
-    plt.show()
+def plot_images(sos_image, data_xy, output_path=None):
+    """Plot reconstructed images for all coils and the final sum-of-squares image"""
+    n_coils = data_xy.shape[1]
+    num_images = data_xy.shape[3]  # Number of slices/repetitions
 
+    # Calculate grid dimensions for coil images
+    cols = int(np.ceil(np.sqrt(n_coils)))  # Automatic layout for coils
+    rows = int(np.ceil(n_coils / cols))
 
-def plot_images(sos_image):
-    """Plot reconstructed images"""
-    num_images = sos_image.shape[2]
-    cols = int(np.ceil(np.sqrt(num_images)))  # Automatic layout
-    rows = int(np.ceil(num_images / cols))
+    # Create figure with appropriate size
+    plt.figure(figsize=(4 * cols, 4 * rows * (num_images + 1)))  # Extra space for SOS images
 
-    plt.figure(figsize=(4 * cols, 4 * rows))
+    # Plot individual coil images
     for i in range(num_images):
-        plt.subplot(rows, cols, i + 1)
+        plt.suptitle(f'Slice/Repetition {i + 1}', fontsize=16, y=0.95)
+        for coil_idx in range(n_coils):
+            plt.subplot(rows * (num_images + 1), cols, coil_idx + 1 + i * rows * cols)
+            plt.imshow(np.abs(data_xy[:, coil_idx, :, i]), aspect='equal', cmap='gray')
+            plt.axis('off')
+            plt.title(f'Coil {coil_idx + 1}')
+
+    # Plot sum-of-squares images
+    for i in range(num_images):
+        plt.subplot(rows * (num_images + 1), cols, (i + 1) * rows * cols)
         plt.imshow(sos_image[:, :, i], aspect='equal', cmap='gray')
         plt.axis('off')
-        plt.title(f'Image {i + 1}')
+        plt.title('Sum-of-Squares')
 
-    plt.suptitle('EPI Reconstruction - All Images', fontsize=16)
     plt.tight_layout()
+
+    # Save figure if output directory is provided
+    if output_path is not None:
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+
     plt.show()
+    plt.close()
 
 
-def run_epi_pipeline(rawdata, ktraj_adc, t_adc, use_phase_correction=False, show_plots=True, seq_file=None):
+def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=None, output_dir=None):
     """
     Complete EPI reconstruction pipeline
     
     Args:
         rawdata: Complex raw data array
-        ktraj_adc: K-space trajectory during ADC
-        t_adc: Time points during ADC
         use_phase_correction: Whether to apply phase correction
         show_plots: Whether to display plots
+        seq_file: Path to sequence file
+        output_dir: Directory to save plots (optional)
     
     Returns:
         sos_image: Sum-of-squares images
         data_xy: Complex image data for all coils
         measured_traj_delay: Calculated trajectory delay
     """
-    nADC = rawdata.shape[0]
+    # extract relevant parameters
+    nADC = int(seq.get_definition('FrequencyEncodingSteps'))
+    Nx = int(seq.get_definition('Nx'))
+    Ny = int(seq.get_definition('Ny'))
+    Ny_sampled = int(seq.get_definition('NySampled'))
 
-    # 1. Calculate FOV parameters
-    fov, Nx, Ny, Ny_sampled, delta_ky = calculate_fov_parameters(ktraj_adc, nADC)
+    fov_x, fov_y, fov_z = seq.get_definition('FOV')
+    # fov = fov_x
+    delta_ky = 1/fov_y
+    ktraj_adc_initial, _, _, _, t_adc_initial = seq.calculate_kspace()
+
+    # fov, Nx, Ny, Ny_sampled, delta_ky = calculate_fov_parameters(ktraj_adc, nADC)
 
     # 2. Calculate trajectory delay
-    measured_traj_delay = calculate_trajectory_delay(rawdata, t_adc, nADC)
+    measured_traj_delay = calculate_trajectory_delay(rawdata, t_adc_initial, nADC)
     print(f'measured trajectory delay (assuming it is a calibration data set) is {measured_traj_delay:.8e} s')
-    print('type this value in the section above and re-run the script')
-    seq = pp.Sequence()
-    seq.read(seq_file)
-    ktraj_adc, k_traj, t_excitation, t_refocusing, t_adc = seq.calculate_kspace(trajectory_delay=measured_traj_delay)
+    print(f'Updating {measured_traj_delay:.8e} delay into ktraj_adc and t_adc')
+
+    ktraj_adc, _, _, _, t_adc = seq.calculate_kspace(trajectory_delay=measured_traj_delay)
 
     # 3. Resample data to Cartesian grid
     data_resampled, ktraj_resampled, t_adc_resampled = resample_data(rawdata, ktraj_adc, t_adc, Nx)
 
-    if show_plots:
-        plot_kspace_data(data_resampled)
-
     # 4. Calculate and apply phase correction
-    mphase1, mphase2, mphase = calculate_phase_correction(data_resampled)
-
-    pc_coef = 0
     if use_phase_correction:
+        mphase1, mphase2, mphase = calculate_phase_correction(data_resampled)
         pc_coef = mphase1 / (2 * np.pi)
+        data_pc = apply_phase_correction(data_resampled, pc_coef)
+    else:
+        data_pc = data_resampled
 
-    data_pc = apply_phase_correction(data_resampled, pc_coef)
+
+    half_fourier = True if seq.get_definition('PartialFourierFactor') < 1 else False
+    if half_fourier:
+        data_resampled = np.where(data_resampled == 0, 1e-10, data_resampled)
+        data_full_kspace = create_full_kspace(data_resampled, ktraj_resampled, Ny, delta_ky)
+        data_full_kspace = np.moveaxis(data_full_kspace, 1, 0)
+        data_full_kspace = pocs_pf(data_full_kspace, iter=10)
+        data_full_kspace = data_full_kspace.squeeze(-1)
+        data_full_kspace = np.moveaxis(data_full_kspace, 0, 1)
+
 
     if show_plots:
-        plot_phase_data(data_pc)
+        # plot_kspace_data(data_pc, os.path.join(output_dir, "kspace_partial.png"))
+        plot_kspace_data(data_full_kspace, os.path.join(output_dir, "kspace_full.png"))
 
     # 5. Reconstruct images
     sos_image, data_xy = reconstruct_images(data_pc, Ny_sampled, Ny)
+    sos_image_full_matrix, data_xy_full_matrix = reconstruct_images(data_full_kspace, Ny, Ny)
 
     if show_plots:
-        plot_images(sos_image)
+        # plot_images(sos_image, data_xy, os.path.join(output_dir, 'reconstructed_images_partial.png'))
+        plot_images(sos_image_full_matrix, data_xy_full_matrix, os.path.join(output_dir, 'reconstructed_images_full.png'))
 
     return sos_image, data_xy, measured_traj_delay

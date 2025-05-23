@@ -73,7 +73,7 @@ def load_mr0_data(seq_file, phantom_path="numerical_brain_cropped.mat", use_coil
     return rawdata
 
 
-def load_data(raw_data_path, use_mr0=False, seq_file=None, phantom_path="numerical_brain_cropped.mat",
+def load_data(raw_data_path, use_mr0=False, seq_file_path=None, phantom_path="numerical_brain_cropped.mat",
               use_coil_maps=False, num_coils=None):
     """
     Unified data loading function - agnostic to data source
@@ -81,7 +81,7 @@ def load_data(raw_data_path, use_mr0=False, seq_file=None, phantom_path="numeric
     Args:
         raw_data_path: Path to .mat file
         use_mr0: If True, simulate data with MR0; if False, load from .mat
-        seq_file: Path to .seq file (required if use_mr0=True)
+        seq_file_path: Path to .seq file (required if use_mr0=True)
         phantom_path: Path to phantom .mat file (only used if use_mr0=True)
         use_coil_maps: Whether to add coil sensitivity maps (only used if use_mr0=True)
         num_coils: Number of coils for sensitivity maps (only used if use_mr0=True and use_coil_maps=True)
@@ -90,14 +90,14 @@ def load_data(raw_data_path, use_mr0=False, seq_file=None, phantom_path="numeric
         rawdata: Complex raw data array (184, 34, 384)
     """
     seq = pp.Sequence()
-    seq.read(seq_file)
+    seq.read(seq_file_path)
     # k_traj_adc, k_traj, t_excitation, t_refocusing, t_adc = seq.calculate_kspace(trajectory_delay=traj_recon_delay)
     k_traj_adc, k_traj, t_excitation, t_refocusing, t_adc = seq.calculate_kspace()
     if use_mr0:
-        if seq_file is None:
+        if seq_file_path is None:
             raise ValueError("seq_file must be provided when use_mr0=True")
-        raw_data = load_mr0_data(seq_file, phantom_path, use_coil_maps, num_coils)
+        raw_data = load_mr0_data(seq_file_path, phantom_path, use_coil_maps, num_coils)
     else:
         raw_data = load_mat_data(raw_data_path)
 
-    return raw_data, k_traj_adc, t_adc
+    return raw_data, seq
