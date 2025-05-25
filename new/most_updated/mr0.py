@@ -19,7 +19,7 @@ import numpy as np
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
 import scipy.io as sio
-
+import time
 
 def main():
 
@@ -33,13 +33,14 @@ def main():
     # mr0.util.insert_signal_plot(seq=seq, signal=signal.numpy())
     # plt.show()
     # exit()
+    init_time = time.time()
     seq0 = mr0.Sequence.import_file(seq_file)
     obj_p = mr0.VoxelGridPhantom.load_mat("numerical_brain_cropped.mat")
     obj_p = obj_p.build()
     # Simulate the sequence
     graph = mr0.compute_graph(seq0.cuda(), obj_p.cuda(), 200, 1e-3)
     signal = mr0.execute_graph(graph, seq0.cuda(), obj_p.cuda(), print_progress=True)
-
+    print(f"Total time: {time.time() - init_time}")
     exit()
     reco = mr0.reco_adjoint(signal, seq0.get_kspace(), resolution=(128, 128, 1), FOV=(0.22, 0.22, 1))
     plt.figure()
