@@ -25,7 +25,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     ro_os = 1  # Oversampling factor
     readout_time = 2 * 4.2e-4  # Readout bandwidth
     # Partial Fourier factor: 1: full sampling; 0.5: sample from -kmax to 0
-    part_fourier_factor = 1
+    part_fourier_factor = 9/16
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
     spoil_factor = 1.5  # Spoiling gradient around the pi-pulse (rf180)
@@ -44,8 +44,8 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         159, 200, 200, 200, 138, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75,
         159, 200, 200, 200, 138, 75
     ]
-    flip_angles = flip_angles[:1]
-    tr_values_ms = tr_values_ms[:1]
+    # flip_angles = flip_angles[:1]
+    # tr_values_ms = tr_values_ms[:1]
     if part_fourier_factor == 1:
         seq_filename = f"sequences/{current_date}_epi_Nx{Nx}_Ny{Ny}_R{acceleration_factor}_repetitions_{len(tr_values_ms)}_multi_shot_for_calibration"
     else:

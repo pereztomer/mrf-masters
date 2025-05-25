@@ -23,7 +23,8 @@ import scipy.io as sio
 
 def main():
 
-    seq_file = r"sequences/2025-05-22_epi_Nx192_Ny192_R3_part_fourier_repetitions_1.seq"
+    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\sequence_writing_code\sequences\2025-05-25_epi_Nx192_Ny192_R3_part_fourier_repetitions_50_multi_shot_for_calibration.seq"
+
     # # for plotting graph of the signal evolotion
     # seq = pp.Sequence()
     # seq.read(seq_file)
@@ -39,9 +40,6 @@ def main():
     graph = mr0.compute_graph(seq0.cuda(), obj_p.cuda(), 200, 1e-3)
     signal = mr0.execute_graph(graph, seq0.cuda(), obj_p.cuda(), print_progress=True)
 
-    reshaped_signal = torch.reshape(signal, (184, 1, -1))
-    signal_numpy = reshaped_signal.cpu().numpy()
-    sio.savemat("simulated_signal.mat", {"signal": signal_numpy})
     exit()
     reco = mr0.reco_adjoint(signal, seq0.get_kspace(), resolution=(128, 128, 1), FOV=(0.22, 0.22, 1))
     plt.figure()
