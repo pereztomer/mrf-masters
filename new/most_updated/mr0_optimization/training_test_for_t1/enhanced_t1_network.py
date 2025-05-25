@@ -239,7 +239,7 @@ class EnhancedT1MappingNet(nn.Module):
             x = F.interpolate(x, size=original_size, mode='bilinear', align_corners=False)
         
         # Scale from [0, 1] to [0, 5] seconds for T1 values
-        x = x * 5
+        # x = x * 5
         
         return x
 

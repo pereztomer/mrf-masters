@@ -114,6 +114,54 @@ def create_phantom_with_custom_T1(T1_map, Nread=32, Nphase=32):
     return phantom
 
 
+def create_phantom_with_custom_params(T1_map, T2_map, PD_map, Nread=32, Nphase=32):
+    """
+    Create a phantom with custom T1, T2, and proton density maps.
+
+    Parameters:
+    -----------
+    T1_map : torch.Tensor
+        The custom T1 map to apply to the phantom (in seconds)
+    T2_map : torch.Tensor
+        The custom T2 map to apply to the phantom (in seconds)
+    PD_map : torch.Tensor
+        The custom proton density map to apply to the phantom (normalized)
+    Nread : int
+        Number of readout steps
+    Nphase : int
+        Number of phase encoding steps
+
+    Returns:
+    --------
+    phantom : mr0.VoxelGridPhantom
+        The phantom object with the custom parameter maps
+    """
+    sz = [Nread, Nphase]
+
+    # Load a phantom object from file
+    phantom = mr0.VoxelGridPhantom.load_mat('numerical_brain_cropped.mat')
+    phantom = phantom.interpolate(sz[0], sz[1], 1)
+
+    # Manipulate properties
+    phantom.T2dash[:] = 30e-3
+    phantom.D *= 0
+    phantom.B0 *= 1  # alter the B0 inhomogeneity
+
+    # Ensure all maps have the correct dimensions
+    if len(T1_map.shape) == 2:
+        T1_map = T1_map.unsqueeze(-1)  # Add dimension if needed
+    if len(T2_map.shape) == 2:
+        T2_map = T2_map.unsqueeze(-1)  # Add dimension if needed
+    if len(PD_map.shape) == 2:
+        PD_map = PD_map.unsqueeze(-1)  # Add dimension if needed
+
+    # Set the custom parameter maps
+    phantom.T1 = T1_map
+    phantom.T2 = T2_map
+    phantom.PD = PD_map
+
+    return phantom
+
 # Example usage
 if __name__ == "__main__":
     # Create a default phantom

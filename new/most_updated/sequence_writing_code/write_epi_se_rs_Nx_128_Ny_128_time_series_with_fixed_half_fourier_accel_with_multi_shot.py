@@ -16,8 +16,8 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     # SETUP
     # ======
     fov = 220e-3  # Define FOV and resolution
-    Nx = 192
-    Ny = 192
+    Nx = 128
+    Ny = 128
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
     TE = 0.2
@@ -44,8 +44,8 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         159, 200, 200, 200, 138, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75,
         159, 200, 200, 200, 138, 75
     ]
-    # flip_angles = flip_angles[:1]
-    # tr_values_ms = tr_values_ms[:1]
+    flip_angles = flip_angles[:1]
+    tr_values_ms = tr_values_ms[:1]
     if part_fourier_factor == 1:
         seq_filename = f"sequences/{current_date}_epi_Nx{Nx}_Ny{Ny}_R{acceleration_factor}_repetitions_{len(tr_values_ms)}_multi_shot_for_calibration"
     else:
