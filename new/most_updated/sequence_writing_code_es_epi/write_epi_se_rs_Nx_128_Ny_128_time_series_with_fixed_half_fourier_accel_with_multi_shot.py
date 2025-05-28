@@ -16,14 +16,16 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     # SETUP
     # ======
     fov = 220e-3  # Define FOV and resolution
-    Nx = 128
-    Ny = 128
+    Nx = 192
+    Ny = 192
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
-    TE = 0.2
+    TE = 0.8
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
     ro_os = 1  # Oversampling factor
-    readout_time = 2 * 4.2e-4  # Readout bandwidth
+    # readout_time = 2 * 4.2e-4  # Readout bandwidth
+    base_readout_time = 2 * 4.2e-4
+    readout_time = base_readout_time * (Nx / 128)  # Scale with matrix size
     # Partial Fourier factor: 1: full sampling; 0.5: sample from -kmax to 0
     part_fourier_factor = 9/16
     t_RF_ex = 2e-3
@@ -61,7 +63,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     system = pp.Opts(
         max_grad=60,
         grad_unit='mT/m',
-        max_slew=150,
+        max_slew=120,
         slew_unit='T/m/s',
         rf_ringdown_time=30e-6,
         rf_dead_time=100e-6,
@@ -298,7 +300,8 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
                 shot_duration += pp.calc_duration(rf180, gz180n, gx_pre, gy_pre_shot)
                 shot_duration += Ny_meas_shot * pp.calc_duration(gx, adc)
                 shot_duration += pp.calc_duration(tr_spoiler)
-                
+
+
                 desired_tr_shot = tr_values[0]
                 additional_delay_shot = desired_tr_shot - shot_duration
                 
@@ -386,6 +389,13 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     if plot:
         seq.plot()
 
+    # Add these debug prints to see what's happening:
+    print(f"Matrix size: {Nx}×{Ny}")
+    print(f"ADC samples: {adc_samples}")
+    print(f"ADC dwell time: {adc_dwell * 1e6:.2f} µs")
+    print(f"Readout duration: {readout_time * 1e3:.2f} ms")
+    print(f"Sequence file size estimate: {seq.duration()[0]:.1f} s")
+    # exit()
     if write_seq:
         # Calculate resolution
         resolution = fov / Nx  # meters per pixel

@@ -309,6 +309,8 @@ def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=N
         data_full_kspace = pocs_pf(data_full_kspace, iter=10)
         data_full_kspace = data_full_kspace.squeeze(-1)
         data_full_kspace = np.moveaxis(data_full_kspace, 0, 1)
+    else:
+        data_full_kspace = data_resampled
 
 
     if show_plots:

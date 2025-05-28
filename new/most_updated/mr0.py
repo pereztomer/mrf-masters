@@ -23,16 +23,16 @@ import time
 
 def main():
 
-    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\sequence_writing_code\sequences\2025-05-25_epi_Nx192_Ny192_R3_part_fourier_repetitions_50_multi_shot_for_calibration.seq"
-
-    # # for plotting graph of the signal evolotion
-    # seq = pp.Sequence()
-    # seq.read(seq_file)
-    # signal = mr0.util.simulate_2d(seq)
-    # seq.plot(plot_now=False)
-    # mr0.util.insert_signal_plot(seq=seq, signal=signal.numpy())
-    # plt.show()
-    # exit()
+    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\matlab\tutorials\tomer_custom_code\epi_rs.seq"
+    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\sequence_writing_code_gre_epi\original_sequences_from_pulseq\gre_pypulseq.seq"
+    # for plotting graph of the signal evolotion
+    seq = pp.Sequence()
+    seq.read(seq_file)
+    signal = mr0.util.simulate_2d(seq)
+    seq.plot(plot_now=False)
+    mr0.util.insert_signal_plot(seq=seq, signal=signal.numpy())
+    plt.show()
+    exit()
     init_time = time.time()
     seq0 = mr0.Sequence.import_file(seq_file)
     obj_p = mr0.VoxelGridPhantom.load_mat("numerical_brain_cropped.mat")
