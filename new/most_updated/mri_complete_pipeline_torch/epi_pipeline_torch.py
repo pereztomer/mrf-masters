@@ -43,7 +43,6 @@ def calculate_trajectory_delay_torch(rawdata, t_adc, nADC):
     return measured_traj_delay.item()
 
 
-
 def compare_full_resample_functions(rawdata, ktraj_adc, t_adc, Nx):
     """Compare NumPy vs Fixed PyTorch resample functions"""
 
@@ -86,6 +85,7 @@ def compare_full_resample_functions(rawdata, ktraj_adc, t_adc, Nx):
     print(f"t_adc NaN - NumPy: {np_t_nan}, PyTorch: {torch_t_nan}")
 
     return data_match and ktraj_match and t_match
+
 
 def create_full_kspace(data_resampled, ktraj_resampled, Ny, delta_ky):
     """
@@ -146,6 +146,28 @@ def apply_phase_correction(data_resampled, pc_coef):
         for i in range(data_resampled.shape[0]):
             phase_correction = np.exp(1j * 2 * np.pi * pc_coef * (np.arange(data_pc.shape[2]) % 2))
             data_pc[i, c, :] = data_resampled[i, c, :] * phase_correction
+
+    return data_pc
+
+
+def apply_phase_correction_torch(data_resampled, pc_coef):
+    """Apply phase correction to resampled data - PyTorch version"""
+    # Get dimensions
+    nSamples, nCoils, nPoints = data_resampled.shape
+
+    # Create the alternating pattern (0, 1, 0, 1, ...)
+    indices = torch.arange(nPoints, dtype=torch.float32, device=data_resampled.device)
+    alternating_pattern = indices % 2
+
+    # Calculate phase correction: exp(1j * 2 * pi * pc_coef * alternating_pattern)
+    phase_arg = 2 * torch.pi * pc_coef * alternating_pattern
+
+    # Create complex exponential: exp(1j * phase_arg) = cos(phase_arg) + 1j * sin(phase_arg)
+    phase_correction = torch.complex(torch.cos(phase_arg), torch.sin(phase_arg)).to(data_resampled.dtype)
+
+    # Apply phase correction to all samples and coils at once using broadcasting
+    # Shape: [nSamples, nCoils, nPoints] * [nPoints] -> [nSamples, nCoils, nPoints]
+    data_pc = data_resampled * phase_correction
 
     return data_pc
 
@@ -294,18 +316,34 @@ def run_epi_pipeline_torch(rawdata, device, use_phase_correction=False, show_plo
     # 3. Resample data to Cartesian grid
     from resample_grid import resample_data_torch_diff
     data_resampled, ktraj_resampled, t_adc_resampled = resample_data_torch_diff(rawdata, ktraj_adc, t_adc, Nx)
-    data_resampled = data_resampled.cpu().numpy()
-    ktraj_resampled = ktraj_resampled.cpu().numpy()
-    t_adc_resampled = t_adc_resampled.cpu().numpy()
+
     # 4. Calculate and apply phase correction
     if use_phase_correction:
-        mphase1, mphase2, mphase = calculate_phase_correction(data_resampled)
+        data_resampled_np = data_resampled.cpu().numpy()
+        mphase1, mphase2, mphase = calculate_phase_correction(data_resampled_np)
         pc_coef = mphase1 / (2 * np.pi)
         print(pc_coef)
-        data_pc = apply_phase_correction(data_resampled, pc_coef)
+
+        data_pc_np = apply_phase_correction(data_resampled_np, pc_coef)
+        data_pc_torch = apply_phase_correction_torch(data_resampled, pc_coef)
+
+        data_pc_np = torch.from_numpy(data_pc_np)
+        l2_diff = torch.norm(data_pc_torch.cpu() - data_pc_np).item()
+        print(f"L2 difference: {l2_diff}")
+
+        # Test differentiability
+        data_resampled = data_resampled.requires_grad_(True)
+        result = apply_phase_correction_torch(data_resampled, pc_coef)
+        loss = torch.sum(torch.abs(result) ** 2)
+        loss.backward()
+        print(f"Gradient w.r.t. pc_coef: {data_resampled.grad}")
+        exit()
+
     else:
         data_pc = data_resampled
 
+    ktraj_resampled = ktraj_resampled.cpu().numpy()
+    t_adc_resampled = t_adc_resampled.cpu().numpy()
     exit()
     half_fourier = True if seq.get_definition('PartialFourierFactor') < 1 else False
     if half_fourier:
