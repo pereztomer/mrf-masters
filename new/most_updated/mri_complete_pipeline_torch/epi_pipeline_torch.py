@@ -301,10 +301,12 @@ def run_epi_pipeline_torch(rawdata, device, use_phase_correction=False, show_plo
     if use_phase_correction:
         mphase1, mphase2, mphase = calculate_phase_correction(data_resampled)
         pc_coef = mphase1 / (2 * np.pi)
+        print(pc_coef)
         data_pc = apply_phase_correction(data_resampled, pc_coef)
     else:
         data_pc = data_resampled
 
+    exit()
     half_fourier = True if seq.get_definition('PartialFourierFactor') < 1 else False
     if half_fourier:
         data_resampled = np.where(data_resampled == 0, 1e-10, data_resampled)

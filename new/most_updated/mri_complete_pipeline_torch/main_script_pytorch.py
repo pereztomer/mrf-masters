@@ -37,14 +37,6 @@ k_traj_adc, k_traj, t_excitation, t_refocusing, t_adc = seq.calculate_kspace()
 
 raw_data_np = raw_data_torch.cpu().numpy()
 # Run EPI reconstruction pipeline
-# sos_image, data_xy, measured_traj_delay = run_epi_pipeline(
-#     rawdata=raw_data_np,
-#     seq=seq,
-#     use_phase_correction=use_phase_correction,
-#     show_plots=True,
-#     output_dir=output_dir)
-
-
 sos_image, data_xy, measured_traj_delay = run_epi_pipeline_torch(
     rawdata=raw_data_torch,
     device=device,
