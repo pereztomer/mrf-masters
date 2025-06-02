@@ -319,6 +319,10 @@ def run_epi_pipeline_torch(rawdata, device, use_phase_correction=False, show_plo
 
     # 4. Calculate and apply phase correction
     if use_phase_correction:
+        #################################################################
+        # Now we need to convert calculate_phase_correction - Might have an implmentation from before, in the begning of this function
+        # named calculate_trajectory_delay_torch
+        # at least it calculates odd and even values currectly!
         data_resampled_np = data_resampled.cpu().numpy()
         mphase1, mphase2, mphase = calculate_phase_correction(data_resampled_np)
         pc_coef = mphase1 / (2 * np.pi)
