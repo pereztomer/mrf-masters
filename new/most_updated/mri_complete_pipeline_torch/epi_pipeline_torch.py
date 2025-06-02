@@ -292,10 +292,7 @@ def run_epi_pipeline_torch(rawdata, device, use_phase_correction=False, show_plo
     t_adc = torch.from_numpy(t_adc).to(device)
 
     # 3. Resample data to Cartesian grid
-    # data_resampled, ktraj_resampled, t_adc_resampled = resample_data(rawdata, ktraj_adc, t_adc, Nx)
-    # compare_full_resample_functions(rawdata, ktraj_adc, t_adc, Nx)
     from resample_grid import resample_data_torch_diff
-    from differentiable_resample import resample_data_torch_differentiable
     data_resampled, ktraj_resampled, t_adc_resampled = resample_data_torch_diff(rawdata, ktraj_adc, t_adc, Nx)
     data_resampled = data_resampled.cpu().numpy()
     ktraj_resampled = ktraj_resampled.cpu().numpy()
