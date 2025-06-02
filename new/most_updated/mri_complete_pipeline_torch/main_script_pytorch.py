@@ -1,6 +1,5 @@
-from data_loader import load_data
 from data_loader_pytorch import load_data_torch
-# from epi_pipeline import run_epi_pipeline
+from epi_pipeline_torch import run_epi_pipeline_torch
 import os
 import torch
 
@@ -24,8 +23,7 @@ use_phase_correction = True
 # MR0 coil configuration
 num_coils = 34  # Number of coils
 
-
-rawdata, seq = load_data_torch(
+raw_data_torch, seq = load_data_torch(
     raw_data_path,
     use_mr0=use_mr0_simulator,
     seq_file_path=seq_file_path,
@@ -34,14 +32,23 @@ rawdata, seq = load_data_torch(
     device=device
 )
 
+
 k_traj_adc, k_traj, t_excitation, t_refocusing, t_adc = seq.calculate_kspace()
 
-# # Run EPI reconstruction pipeline
+raw_data_np = raw_data_torch.cpu().numpy()
+# Run EPI reconstruction pipeline
 # sos_image, data_xy, measured_traj_delay = run_epi_pipeline(
-#     rawdata=raw_data,
+#     rawdata=raw_data_np,
 #     seq=seq,
 #     use_phase_correction=use_phase_correction,
 #     show_plots=True,
-#     output_dir=output_dir,
-#     device=device  # Pass device to pipeline
-# )
+#     output_dir=output_dir)
+
+
+sos_image, data_xy, measured_traj_delay = run_epi_pipeline_torch(
+    rawdata=raw_data_torch,
+    device=device,
+    seq=seq,
+    use_phase_correction=use_phase_correction,
+    show_plots=True,
+    output_dir=output_dir)

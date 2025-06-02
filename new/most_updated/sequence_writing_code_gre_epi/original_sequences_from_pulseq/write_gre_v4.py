@@ -5,7 +5,7 @@ import numpy as np
 import pypulseq as pp
 
 
-def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'gre_pypulseq.seq'):
+def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'gre_pypulseq_v4.seq'):
     # ======
     # SETUP
     # ======
@@ -15,21 +15,22 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'gre_p
     Ny = 192
     alpha = 90  # flip angle
     slice_thickness = 3e-3  # slice
-    TR = 12e-3  # Repetition time
-    TE = 5e-3  # Echo time
+    TR = 9e-3  # Repetition time
+    TE = 4e-3  # Echo time
 
     rf_spoiling_inc = 117  # RF spoiling increment
 
+
     system = pp.Opts(
-        max_grad=60,
+        max_grad=30,
         grad_unit='mT/m',
-        max_slew=150,
+        max_slew=100,
         slew_unit='T/m/s',
         rf_ringdown_time=20e-6,
         rf_dead_time=100e-6,
         adc_dead_time=10e-6,
     )
-    
+
     seq = pp.Sequence(system)
 
     # ======
@@ -37,7 +38,6 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'gre_p
     # ======
     rf, gz, _ = pp.make_sinc_pulse(
         flip_angle=alpha * math.pi / 180,
-        duration=3e-3,
         slice_thickness=slice_thickness,
         apodization=0.42,
         time_bw_product=4,
@@ -45,12 +45,34 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'gre_p
         return_gz=True,
         delay=system.rf_dead_time,
     )
+
     # Define other gradients and ADC events
     delta_k = 1 / fov
-    gx = pp.make_trapezoid(channel='x', flat_area=Nx * delta_k, flat_time=3.2e-3, system=system)
-    adc = pp.make_adc(num_samples=Nx, duration=gx.flat_time, delay=gx.rise_time, system=system)
-    gx_pre = pp.make_trapezoid(channel='x', area=-gx.area / 2, duration=1e-3, system=system)
-    gz_reph = pp.make_trapezoid(channel='z', area=-gz.area / 2, duration=1e-3, system=system)
+
+    # Calculate readout gradient
+    gx = pp.make_trapezoid(
+        channel='x',
+        flat_area=Nx * delta_k,
+        flat_time=2e-3,  # Use fixed flat time
+        system=system
+    )
+
+    # FIX: Create ADC with proper dwell time alignment
+    # Calculate dwell time that aligns with ADC raster
+    desired_dwell = gx.flat_time / Nx
+    dwell_raster_periods = np.round(desired_dwell / system.adc_raster_time)
+    aligned_dwell = dwell_raster_periods * system.adc_raster_time
+    aligned_duration = aligned_dwell * Nx
+
+    adc = pp.make_adc(
+        num_samples=Nx,
+        dwell=aligned_dwell,  # Use aligned dwell time instead of duration
+        delay=gx.rise_time,
+        system=system
+    )
+
+    gx_pre = pp.make_trapezoid(channel='x', area=-gx.area / 2, system=system)
+    gz_reph = pp.make_trapezoid(channel='z', area=-gz.area / 2, system=system)
     phase_areas = (np.arange(Ny) - Ny / 2) * delta_k
 
     # gradient spoiling
@@ -59,18 +81,18 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'gre_p
 
     # Calculate timing
     delay_TE = (
-        np.ceil(
-            (TE - pp.calc_duration(gx_pre) - gz.fall_time - gz.flat_time / 2 - pp.calc_duration(gx) / 2)
-            / seq.grad_raster_time
-        )
-        * seq.grad_raster_time
+            np.ceil(
+                (TE - pp.calc_duration(gx_pre) - gz.fall_time - gz.flat_time / 2 - pp.calc_duration(gx) / 2)
+                / seq.grad_raster_time
+            )
+            * seq.grad_raster_time
     )
     delay_TR = (
-        np.ceil(
-            (TR - pp.calc_duration(gz) - pp.calc_duration(gx_pre) - pp.calc_duration(gx) - delay_TE)
-            / seq.grad_raster_time
-        )
-        * seq.grad_raster_time
+            np.ceil(
+                (TR - pp.calc_duration(gz) - pp.calc_duration(gx_pre) - pp.calc_duration(gx) - delay_TE)
+                / seq.grad_raster_time
+            )
+            * seq.grad_raster_time
     )
 
     assert np.all(delay_TE >= 0)
@@ -101,7 +123,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'gre_p
         seq.add_block(gx, adc)
         gy_pre.amplitude = -gy_pre.amplitude
         seq.add_block(pp.make_delay(delay_TR), gx_spoil, gy_pre, gz_spoil)
-        break
+
 
     # Check whether the timing of the sequence is correct
     ok, error_report = seq.check_timing()
