@@ -22,7 +22,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'gre_p
 
 
     system = pp.Opts(
-        max_grad=30,
+        max_grad=40,
         grad_unit='mT/m',
         max_slew=100,
         slew_unit='T/m/s',

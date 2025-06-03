@@ -46,8 +46,8 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         159, 200, 200, 200, 138, 75, 75, 75, 75, 75, 75, 75, 75, 75, 75,
         159, 200, 200, 200, 138, 75
     ]
-    flip_angles = flip_angles[:1]
-    tr_values_ms = tr_values_ms[:1]
+    # flip_angles = flip_angles[:1]
+    # tr_values_ms = tr_values_ms[:1]
     if part_fourier_factor == 1:
         seq_filename = f"sequences/{current_date}_epi_Nx{Nx}_Ny{Ny}_R{acceleration_factor}_repetitions_{len(tr_values_ms)}_multi_shot_for_calibration"
     else:
@@ -63,7 +63,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     system = pp.Opts(
         max_grad=60,
         grad_unit='mT/m',
-        max_slew=120,
+        max_slew=100,
         slew_unit='T/m/s',
         rf_ringdown_time=30e-6,
         rf_dead_time=100e-6,
