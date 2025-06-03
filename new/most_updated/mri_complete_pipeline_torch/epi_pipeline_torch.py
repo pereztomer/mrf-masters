@@ -137,6 +137,29 @@ def calculate_phase_correction(data_resampled):
     return mphase1, mphase2, mphase
 
 
+def calculate_phase_correction_torch(data_resampled):
+    """Calculate phase correction coefficients"""
+    # Calculate odd and even data using PyTorch FFT operations
+
+    data_odd = torch.fft.ifftshift(torch.fft.ifft(torch.fft.ifftshift(data_resampled[:, :, 0::2], dim=0), dim=0), dim=0)
+
+    data_even = torch.fft.ifftshift(torch.fft.ifft(torch.fft.ifftshift(data_resampled[:, :, 1::2], dim=0),dim=0),dim=0)
+
+    # Calculate complex differences
+    cmplx_diff1 = data_even * torch.conj(data_odd)
+    cmplx_diff2 = data_even[:, :, :-1] * torch.conj(data_odd[:, :, 1:])
+
+    # Calculate phase angles
+    mphase1 = torch.angle(torch.sum(cmplx_diff1))
+    mphase2 = torch.angle(torch.sum(cmplx_diff2))
+
+    # Concatenate and calculate combined phase
+    combined_diff = torch.cat([cmplx_diff1.flatten(), cmplx_diff2.flatten()])
+    mphase = torch.angle(torch.sum(combined_diff))
+
+    return mphase1, mphase2, mphase
+
+
 def apply_phase_correction(data_resampled, pc_coef):
     """Apply phase correction to resampled data"""
     nCoils = data_resampled.shape[1]
@@ -319,36 +342,15 @@ def run_epi_pipeline_torch(rawdata, device, use_phase_correction=False, show_plo
 
     # 4. Calculate and apply phase correction
     if use_phase_correction:
-        #################################################################
-        # Now we need to convert calculate_phase_correction - Might have an implmentation from before, in the begning of this function
-        # named calculate_trajectory_delay_torch
-        # at least it calculates odd and even values currectly!
-        data_resampled_np = data_resampled.cpu().numpy()
-        mphase1, mphase2, mphase = calculate_phase_correction(data_resampled_np)
-        pc_coef = mphase1 / (2 * np.pi)
-        print(pc_coef)
+        mphase1_torch, mphase2_torch, mphase_torch = calculate_phase_correction_torch(data_resampled)
+        pc_coef_torch = mphase1_torch / (2 * np.pi)
+        data_resampled = apply_phase_correction_torch(data_resampled, pc_coef_torch)
 
-        data_pc_np = apply_phase_correction(data_resampled_np, pc_coef)
-        data_pc_torch = apply_phase_correction_torch(data_resampled, pc_coef)
-
-        data_pc_np = torch.from_numpy(data_pc_np)
-        l2_diff = torch.norm(data_pc_torch.cpu() - data_pc_np).item()
-        print(f"L2 difference: {l2_diff}")
-
-        # Test differentiability
-        data_resampled = data_resampled.requires_grad_(True)
-        result = apply_phase_correction_torch(data_resampled, pc_coef)
-        loss = torch.sum(torch.abs(result) ** 2)
-        loss.backward()
-        print(f"Gradient w.r.t. pc_coef: {data_resampled.grad}")
-        exit()
-
-    else:
-        data_pc = data_resampled
-
+    # stopped here!
+    data_resampled = data_resampled.cpu().numpy()
     ktraj_resampled = ktraj_resampled.cpu().numpy()
-    t_adc_resampled = t_adc_resampled.cpu().numpy()
-    exit()
+    # t_adc_resampled = t_adc_resampled.cpu().numpy()
+
     half_fourier = True if seq.get_definition('PartialFourierFactor') < 1 else False
     if half_fourier:
         data_resampled = np.where(data_resampled == 0, 1e-10, data_resampled)
@@ -365,7 +367,7 @@ def run_epi_pipeline_torch(rawdata, device, use_phase_correction=False, show_plo
         plot_kspace_data(data_full_kspace, os.path.join(output_dir, "kspace_full.png"))
 
     # 5. Reconstruct images
-    sos_image, data_xy = reconstruct_images(data_pc, Ny_sampled, Ny)
+    sos_image, data_xy = reconstruct_images(data_resampled, Ny_sampled, Ny)
     sos_image_full_matrix, data_xy_full_matrix = reconstruct_images(data_full_kspace, Ny, Ny)
 
     if show_plots:

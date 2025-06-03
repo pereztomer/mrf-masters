@@ -296,9 +296,7 @@ def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=N
     if use_phase_correction:
         mphase1, mphase2, mphase = calculate_phase_correction(data_resampled)
         pc_coef = mphase1 / (2 * np.pi)
-        data_pc = apply_phase_correction(data_resampled, pc_coef)
-    else:
-        data_pc = data_resampled
+        data_resampled = apply_phase_correction(data_resampled, pc_coef)
 
 
     half_fourier = True if seq.get_definition('PartialFourierFactor') < 1 else False
@@ -318,7 +316,7 @@ def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=N
         plot_kspace_data(data_full_kspace, os.path.join(output_dir, "kspace_full.png"))
 
     # 5. Reconstruct images
-    sos_image, data_xy = reconstruct_images(data_pc, Ny_sampled, Ny)
+    sos_image, data_xy = reconstruct_images(data_resampled, Ny_sampled, Ny)
     sos_image_full_matrix, data_xy_full_matrix = reconstruct_images(data_full_kspace, Ny, Ny)
 
     if show_plots:
