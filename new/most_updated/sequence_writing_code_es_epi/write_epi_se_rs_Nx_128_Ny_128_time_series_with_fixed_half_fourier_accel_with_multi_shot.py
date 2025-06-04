@@ -11,6 +11,7 @@ current_date = date.today()
 # ====== ACCELERATION FACTOR ======
 acceleration_factor = 3  # R=1 means fully sampled; R>1 means skip every R-th line
 
+
 def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     # ======
     # SETUP
@@ -27,7 +28,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     base_readout_time = 2 * 4.2e-4
     readout_time = base_readout_time * (Nx / 128)  # Scale with matrix size
     # Partial Fourier factor: 1: full sampling; 0.5: sample from -kmax to 0
-    part_fourier_factor = 9/16
+    part_fourier_factor = 9 / 16
     t_RF_ex = 2e-3
     t_RF_ref = 2e-3
     spoil_factor = 1.5  # Spoiling gradient around the pi-pulse (rf180)
@@ -159,7 +160,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
 
     # Phase blip in shortest possible time
     blip_duration = np.ceil(2 * np.sqrt(delta_k / system.max_slew) / 10e-6 / 2) * 10e-6 * 2
-    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k, duration=blip_duration)
+    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k * acceleration_factor, duration=blip_duration)
 
     extra_area = blip_duration / 2 * blip_duration / 2 * system.max_slew
     gx = pp.make_trapezoid(
@@ -197,7 +198,8 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     pe_indices = list(range(1, Ny_meas_full + 1))
     pe_indices_accel = pe_indices[::acceleration_factor]
     Ny_meas = len(pe_indices_accel)
-    print(f"Sampling {Ny_meas} lines (acceleration R={acceleration_factor}): {Ny_pre} lines before center and {Ny_post} lines after/including center (full would be {Ny_meas_full})")
+    print(
+        f"Sampling {Ny_meas} lines (acceleration R={acceleration_factor}): {Ny_pre} lines before center and {Ny_post} lines after/including center (full would be {Ny_meas_full})")
 
     gx_pre = pp.make_trapezoid(channel='x', system=system, area=-gx.area / 2)
     gy_pre = pp.make_trapezoid(channel='y', system=system, area=Ny_pre * delta_k)
@@ -209,18 +211,18 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     rf_center_incl_delay = rf.delay + pp.calc_rf_center(rf)[0]
     rf180_center_incl_delay = rf180.delay + pp.calc_rf_center(rf180)[0]
     delay_TE1 = (
-        math.ceil(
-            (TE / 2 - pp.calc_duration(rf, gz) + rf_center_incl_delay - rf180_center_incl_delay)
-            / system.grad_raster_time
-        )
-        * system.grad_raster_time
+            math.ceil(
+                (TE / 2 - pp.calc_duration(rf, gz) + rf_center_incl_delay - rf180_center_incl_delay)
+                / system.grad_raster_time
+            )
+            * system.grad_raster_time
     )
     delay_TE2 = (
-        math.ceil(
-            (TE / 2 - pp.calc_duration(rf180, gz180n) + rf180_center_incl_delay - duration_to_center)
-            / system.grad_raster_time
-        )
-        * system.grad_raster_time
+            math.ceil(
+                (TE / 2 - pp.calc_duration(rf180, gz180n) + rf180_center_incl_delay - duration_to_center)
+                / system.grad_raster_time
+            )
+            * system.grad_raster_time
     )
     assert delay_TE1 >= 0
     delay_TE2 = delay_TE2 + pp.calc_duration(rf180, gz180n)
@@ -239,21 +241,22 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         # ======
         if acceleration_factor > 1:
             print(f"Adding multi-shot EPI with {acceleration_factor} shots")
-            
+
             for shot in range(acceleration_factor):
                 # Calculate phase encoding indices for this shot
                 pe_indices_shot = pe_indices[shot::acceleration_factor]
                 Ny_meas_shot = len(pe_indices_shot)
-                print(f"  Shot {shot+1}: sampling {Ny_meas_shot} lines")
-                
+                print(f"  Shot {shot + 1}: sampling {Ny_meas_shot} lines")
+
                 # Update pre-encoding gradients for this shot
                 shot_pe_start_idx = pe_indices_shot[0] - 1  # Convert to 0-based indexing
                 shot_pe_lines_before_center = shot_pe_start_idx
                 gy_pre_shot = pp.make_trapezoid(channel='y', system=system, area=shot_pe_lines_before_center * delta_k)
-                gy_pre_shot = pp.make_trapezoid('y', system=system, area=gy_pre_shot.area, duration=pp.calc_duration(gx_pre, gy_pre_shot))
+                gy_pre_shot = pp.make_trapezoid('y', system=system, area=gy_pre_shot.area,
+                                                duration=pp.calc_duration(gx_pre, gy_pre_shot))
                 gy_pre_shot.amplitude = gy_pre_shot.amplitude * pe_enable
                 gy_pre_shot.delay = pp.calc_duration(rf180)
-                
+
                 # Adiabatic inversion pulse
                 rf_inv, gz_inv, gzr_inv = pp.make_adiabatic_pulse(
                     pulse_type='hypsec',
@@ -268,10 +271,10 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
                 seq.add_block(rf_inv, gz_inv)
                 seq.add_block(gzr_inv)
                 seq.add_block(pp.make_delay(40e-3))
-                
+
                 # Fat saturation
                 seq.add_block(rf_fs, gz_fs)
-                
+
                 # Excitation using first flip angle
                 rf_shot = rf_pulses[0]
                 rf_shot.freq_offset = gz.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
@@ -279,7 +282,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
                 seq.add_block(rf_shot, gz, trig)
                 seq.add_block(pp.make_delay(delay_TE1))
                 seq.add_block(rf180, gz180n, pp.make_delay(delay_TE2), gx_pre, gy_pre_shot)
-                
+
                 # EPI readout for this shot
                 gx_shot = gx  # Use a copy of the readout gradient
                 for idx, i in enumerate(pe_indices_shot):
@@ -290,10 +293,10 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
                     else:
                         seq.add_block(gx_shot, gy_blipdownup, adc)
                     gx_shot.amplitude = -gx_shot.amplitude
-                
+
                 # TR spoiler
                 seq.add_block(tr_spoiler)
-                
+
                 # Calculate timing and add delay to reach desired TR
                 shot_duration = pp.calc_duration(rf_shot, gz)
                 shot_duration += delay_TE1
@@ -301,16 +304,17 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
                 shot_duration += Ny_meas_shot * pp.calc_duration(gx, adc)
                 shot_duration += pp.calc_duration(tr_spoiler)
 
-
                 desired_tr_shot = tr_values[0]
                 additional_delay_shot = desired_tr_shot - shot_duration
-                
+
                 if additional_delay_shot > 0:
                     seq.add_block(pp.make_delay(additional_delay_shot))
-                    print(f"    Adding delay of {additional_delay_shot:.6f} s to reach desired TR of {desired_tr_shot:.6f} s")
+                    print(
+                        f"    Adding delay of {additional_delay_shot:.6f} s to reach desired TR of {desired_tr_shot:.6f} s")
                 else:
-                    print(f"    Warning: Multi-shot TR is too short! Minimum possible TR is {shot_duration * 1000:.1f} ms")
-            
+                    print(
+                        f"    Warning: Multi-shot TR is too short! Minimum possible TR is {shot_duration * 1000:.1f} ms")
+
             # Add 5000ms delay before main sequence
             seq.add_block(pp.make_delay(5.0))
             print("Added 5000ms delay after multi-shot EPI")
@@ -336,7 +340,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
 
             # Fat saturation
             seq.add_block(rf_fs, gz_fs)
-            
+
             # Excitation and refocusing
             rf.freq_offset = gz.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
             rf180.freq_offset = gz180.amplitude * slice_thickness * (s - (n_slices - 1) / 2)
@@ -399,7 +403,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     if write_seq:
         # Calculate resolution
         resolution = fov / Nx  # meters per pixel
-        
+
         # Set sequence metadata
         seq.set_definition(key='FOV', value=[fov, fov, slice_thickness])
         seq.set_definition(key='Name', value='epi')
@@ -416,10 +420,11 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         seq.set_definition(key='NySampled', value=Ny_meas)
         seq.set_definition(key='NyPre', value=Ny_pre)
         seq.set_definition(key='NyPost', value=Ny_post)
-        
+
         seq.write(seq_filename)
 
     return seq
+
 
 if __name__ == '__main__':
     """

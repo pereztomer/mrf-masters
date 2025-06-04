@@ -200,21 +200,6 @@ def resample_data_torch_diff(rawdata, ktraj_adc, t_adc, Nx):
             data_sorted = data_orig[sort_indices]
             # data_resampled[:, c, a] = torch_spline_interp(kx_sorted, data_sorted, kxx)
             data_resampled[:, c, a] = torch_linear_interp_native(kx_sorted, data_sorted, kxx)
-            # res1 = torch_spline_interp(kx_sorted, data_sorted, kxx)
-            # res2 = torch_linear_interp_native(kx_sorted, data_sorted, kxx)
-
-            # if c == 0 and a == 0:
-            #     plt.figure(figsize=(10, 4))
-            #     plt.plot(kx_sorted.cpu(), torch.abs(data_sorted).cpu(), 'ko', label='Original', markersize=4)
-            #     plt.plot(kxx.cpu(), torch.abs(res1).cpu(), 'b-', label='Spline')
-            #     plt.plot(kxx.cpu(), torch.abs(res2).cpu(), 'r--', label='Linear')
-            #     plt.legend()
-            #     plt.xlabel('k-space position')
-            #     plt.ylabel('Magnitude')
-            #     plt.title('Interpolation Comparison')
-            #     plt.show()
-
-
 
         # Set kx trajectory (just copy kxx)
         ktraj_resampled[0, :, a] = kxx

@@ -7,9 +7,14 @@ from datetime import date
 
 # Get the current date
 current_date = date.today()
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+
 
 # ====== ACCELERATION FACTOR ======
 acceleration_factor = 3  # R=1 means fully sampled; R>1 means skip every R-th line
+
 
 def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     # ======
@@ -88,7 +93,6 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         bandwidth=np.abs(sat_freq),
     )
 
-
     gz_fs = pp.make_trapezoid(channel='z', system=system, delay=pp.calc_duration(rf_fs), area=1 / 1e-4)
 
     tr_spoil_factor = 2.0  # Adjust this value as needed for sufficient dephasing
@@ -160,7 +164,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
     k_width = Nx * delta_k
 
     # Phase blip in shortest possible time
-    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k)
+    gy = pp.make_trapezoid(channel='y', system=system, area=-delta_k* acceleration_factor)
     blip_duration = pp.calc_duration(gy)
 
     extra_area = blip_duration / 2 * blip_duration / 2 * system.max_slew
@@ -303,6 +307,20 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
 
     if plot:
         seq.plot()
+        # Calculate k-space trajectory (Python equivalent of calculateKspacePP)
+        ktraj_adc, ktraj, t_excitation, t_refocusing, t_adc = seq.calculate_kspace()
+
+        # Plot the EPI k-space trajectory (equivalent to the MATLAB plot)
+        plt.figure(figsize=(10, 8))
+        plt.plot(ktraj[0, :], ktraj[1, :], 'b', label='Full trajectory')  # Blue line for full trajectory
+        plt.plot(ktraj_adc[0, :], ktraj_adc[1, :], 'r.', label='ADC points')  # Red dots for ADC points
+        plt.axis('equal')
+        plt.title('EPI k-space trajectory')
+        plt.xlabel('kx (1/m)')
+        plt.ylabel('ky (1/m)')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
 
     if write_seq:
         # Calculate resolution

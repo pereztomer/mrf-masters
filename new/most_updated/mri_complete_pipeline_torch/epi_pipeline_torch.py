@@ -1,30 +1,15 @@
 import numpy as np
 from scipy.interpolate import interp1d
-import matplotlib.pyplot as plt
 import pypulseq as pp
 import os
 from partial_fourier_recon import pocs_pf
 import torch
 
+import matplotlib
 
-def calculate_fov_parameters(ktraj_adc, nADC):
-    """Calculate FOV and matrix size parameters from k-space trajectory"""
-    k_last = ktraj_adc[:, -1]
-    k_2last = ktraj_adc[:, -nADC - 1]
-    delta_ky = k_last[1] - k_2last[1]
-    fov = 1 / abs(delta_ky)
-    Ny_post = round(abs(k_last[1] / delta_ky))
-
-    if k_last[1] > 0:
-        Ny_pre = round(abs(np.min(ktraj_adc[1, :]) / delta_ky))
-    else:
-        Ny_pre = round(abs(np.max(ktraj_adc[1, :]) / delta_ky))
-
-    Nx = 2 * max(Ny_post, Ny_pre)
-    Ny = Nx
-    Ny_sampled = Ny_pre + Ny_post + 1
-
-    return fov, Nx, Ny, Ny_sampled, delta_ky
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+from plotting_utils import plot_images, plot_kspace_data
 
 
 def calculate_trajectory_delay_torch(rawdata, t_adc, nADC):
@@ -41,85 +26,6 @@ def calculate_trajectory_delay_torch(rawdata, t_adc, nADC):
     dwell_time = (t_adc[nADC - 1] - t_adc[0]) / (nADC - 1)
     measured_traj_delay = mslope_phs / (2 * 2 * torch.pi) * nADC * dwell_time
     return measured_traj_delay.item()
-
-
-def compare_full_resample_functions(rawdata, ktraj_adc, t_adc, Nx):
-    """Compare NumPy vs Fixed PyTorch resample functions"""
-
-    # Convert to NumPy for NumPy function
-    rawdata_np = rawdata.cpu().numpy()
-    ktraj_adc_np = ktraj_adc.cpu().numpy()
-    t_adc_np = t_adc.cpu().numpy()
-
-    print("Running NumPy function...")
-    np_data, np_ktraj, np_t = resample_data(rawdata_np, ktraj_adc_np, t_adc_np, Nx)
-
-    print("Running fixed PyTorch function...")
-    torch_data, torch_ktraj, torch_t = resample_data_torch(rawdata, ktraj_adc, t_adc, Nx)
-
-    # Convert PyTorch results to NumPy for comparison
-    torch_data_np = torch_data.cpu().numpy()
-    torch_ktraj_np = torch_ktraj.cpu().numpy()
-    torch_t_np = torch_t.cpu().numpy()
-
-    # Compare outputs
-    data_match = np.allclose(np_data, torch_data_np, rtol=1e-5, atol=1e-8)
-    ktraj_match = np.allclose(np_ktraj, torch_ktraj_np, rtol=1e-5, atol=1e-8, equal_nan=True)
-    t_match = np.allclose(np_t, torch_t_np, rtol=1e-5, atol=1e-8, equal_nan=True)
-
-    print(f"data_resampled match: {data_match}")
-    print(f"ktraj_resampled match: {ktraj_match}")
-    print(f"t_adc_resampled match: {t_match}")
-
-    if not data_match:
-        data_diff = np.abs(np_data - torch_data_np)
-        print(f"Max data difference: {np.max(data_diff):.2e}")
-
-    # Check NaN counts
-    np_ktraj_nan = np.isnan(np_ktraj).sum()
-    torch_ktraj_nan = np.isnan(torch_ktraj_np).sum()
-    np_t_nan = np.isnan(np_t).sum()
-    torch_t_nan = np.isnan(torch_t_np).sum()
-
-    print(f"ktraj NaN - NumPy: {np_ktraj_nan}, PyTorch: {torch_ktraj_nan}")
-    print(f"t_adc NaN - NumPy: {np_t_nan}, PyTorch: {torch_t_nan}")
-
-    return data_match and ktraj_match and t_match
-
-
-def create_full_kspace(data_resampled, ktraj_resampled, Ny, delta_ky):
-    """
-    Create full k-space matrix from resampled data using k-space coordinates
-
-    Args:
-        data_resampled: Resampled data (Nx, nCoils, Ny_sampled)
-        ktraj_resampled: K-space coordinates (3, Nx, Ny_sampled)
-        Ny: Full matrix size in y direction
-        delta_ky: K-space spacing in y direction
-
-    Returns:
-        data_full_kspace: Full k-space with zeros in non-acquired regions
-    """
-
-    Nx, nCoils, Ny_sampled = data_resampled.shape
-
-    ky_max = ktraj_resampled[1, Nx // 2, 0]
-
-    # Initialize full k-space with consistent dimension ordering
-    data_full_kspace = np.zeros((Nx, nCoils, Ny), dtype=complex)
-
-    # Fill the acquired data
-    for row in range(Ny_sampled):
-        # Get ky for this acquisition (use middle of readout since it should be constant)
-        ky = ktraj_resampled[1, Nx // 2, row]
-
-        # Calculate the ky index directly
-        ky_idx = int(np.round((ky_max - ky) / delta_ky))
-
-        # Place the entire readout at this ky position
-        data_full_kspace[:, :, ky_idx] = data_resampled[:, :, row]
-
-    return data_full_kspace
 
 
 def create_full_kspace_torch(data_resampled, ktraj_resampled, Ny, delta_ky):
@@ -150,26 +56,12 @@ def create_full_kspace_torch(data_resampled, ktraj_resampled, Ny, delta_ky):
         ky = ktraj_resampled[1, Nx // 2, row]
 
         # Calculate the ky index directly
-        ky_idx = int((ky_max - ky) / delta_ky)
+        ky_idx = int(torch.round((ky_max - ky) / delta_ky))
 
         # Place the entire readout at this ky position
         data_full_kspace[:, :, ky_idx] = data_resampled[:, :, row]
 
     return data_full_kspace
-
-def calculate_phase_correction(data_resampled):
-    """Calculate phase correction coefficients"""
-    data_odd = np.fft.ifftshift(np.fft.ifft(np.fft.ifftshift(data_resampled[:, :, 0::2], axes=0), axis=0), axes=0)
-    data_even = np.fft.ifftshift(np.fft.ifft(np.fft.ifftshift(data_resampled[:, :, 1::2], axes=0), axis=0), axes=0)
-
-    cmplx_diff1 = data_even * np.conj(data_odd)
-    cmplx_diff2 = data_even[:, :, :-1] * np.conj(data_odd[:, :, 1:])
-
-    mphase1 = np.angle(np.sum(cmplx_diff1))
-    mphase2 = np.angle(np.sum(cmplx_diff2))
-    mphase = np.angle(np.sum(np.concatenate([cmplx_diff1.flatten(), cmplx_diff2.flatten()])))
-
-    return mphase1, mphase2, mphase
 
 
 def calculate_phase_correction_torch(data_resampled):
@@ -178,7 +70,8 @@ def calculate_phase_correction_torch(data_resampled):
 
     data_odd = torch.fft.ifftshift(torch.fft.ifft(torch.fft.ifftshift(data_resampled[:, :, 0::2], dim=0), dim=0), dim=0)
 
-    data_even = torch.fft.ifftshift(torch.fft.ifft(torch.fft.ifftshift(data_resampled[:, :, 1::2], dim=0),dim=0),dim=0)
+    data_even = torch.fft.ifftshift(torch.fft.ifft(torch.fft.ifftshift(data_resampled[:, :, 1::2], dim=0), dim=0),
+                                    dim=0)
 
     # Calculate complex differences
     cmplx_diff1 = data_even * torch.conj(data_odd)
@@ -193,19 +86,6 @@ def calculate_phase_correction_torch(data_resampled):
     mphase = torch.angle(torch.sum(combined_diff))
 
     return mphase1, mphase2, mphase
-
-
-def apply_phase_correction(data_resampled, pc_coef):
-    """Apply phase correction to resampled data"""
-    nCoils = data_resampled.shape[1]
-    data_pc = data_resampled.copy()
-
-    for c in range(nCoils):
-        for i in range(data_resampled.shape[0]):
-            phase_correction = np.exp(1j * 2 * np.pi * pc_coef * (np.arange(data_pc.shape[2]) % 2))
-            data_pc[i, c, :] = data_resampled[i, c, :] * phase_correction
-
-    return data_pc
 
 
 def apply_phase_correction_torch(data_resampled, pc_coef):
@@ -257,80 +137,49 @@ def reconstruct_images(data_pc, Ny_sampled, Ny):
     return sos_image, data_xy
 
 
-def plot_kspace_data(data_pc, output_path=None):
-    """Plot phase and magnitude of hybrid (x/ky) data for all coils"""
-    n_coils = data_pc.shape[1]
+def reconstruct_images_torch(data_pc, Ny_sampled, Ny):
+    """Reconstruct images from k-space data"""
+    nCoils = data_pc.shape[1]
+    nAcq = data_pc.shape[2]
+    n4 = nAcq // Ny_sampled
 
-    # Calculate grid dimensions
-    n_cols = 2  # One column for phase, one for magnitude
-    n_rows = n_coils
+    # Reshape for multiple slices or repetitions - emulate F-order
+    data_pc = data_pc.contiguous()
+    torch_flat = data_pc.permute(2, 1, 0).contiguous().flatten()
+    data_pc = torch_flat.view(n4, Ny_sampled, nCoils, data_pc.shape[0]).permute(3, 2, 1, 0)
 
-    # Create figure with appropriate size
-    plt.figure(figsize=(12, 4 * n_rows))
+    # Transform to hybrid x/ky space
+    data_xky = torch.fft.fftshift(
+        torch.fft.ifft(
+            torch.fft.ifftshift(data_pc, dim=0),
+            dim=0
+        ),
+        dim=0
+    )
 
-    for coil_idx in range(n_coils):
-        # Plot phase
-        plt.subplot(n_rows, n_cols, 2 * coil_idx + 1)
-        plt.imshow(np.angle(data_pc[:, coil_idx, :]).T, aspect='equal', cmap='hsv')
-        plt.title(f'Phase - Coil {coil_idx + 1}')
-        plt.xlabel('kx samples')
-        plt.ylabel('Acquisitions')
-        plt.colorbar()
+    # Zero-pad if needed
+    if Ny_sampled != Ny:
+        data_xky1 = torch.zeros(
+            (data_pc.shape[0], nCoils, Ny, n4),
+            dtype=data_xky.dtype,
+            device=data_xky.device
+        )
+        data_xky1[:, :, (Ny - Ny_sampled):Ny, :] = data_xky
+        data_xky = data_xky1
 
-        # Plot magnitude
-        plt.subplot(n_rows, n_cols, 2 * coil_idx + 2)
-        plt.imshow(np.abs(data_pc[:, coil_idx, :]).T, aspect='equal', cmap='gray')
-        plt.title(f'Magnitude - Coil {coil_idx + 1}')
-        plt.xlabel('kx samples')
-        plt.ylabel('Acquisitions')
-        plt.colorbar()
+    # Transform to image space
+    data_xy = torch.fft.fftshift(
+        torch.fft.ifft(
+            torch.fft.ifftshift(data_xky, dim=2),
+            dim=2
+        ),
+        dim=2
+    )
 
-    plt.tight_layout()
+    # Calculate sum of squares across coils
+    sos_image = torch.sqrt(torch.sum(torch.abs(data_xy) ** 2, dim=1))
 
-    # Save figure if output directory is provided
-    if output_path is not None:
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-
-    plt.show()
-    plt.close()
-
-
-def plot_images(sos_image, data_xy, output_path=None):
-    """Plot reconstructed images for all coils and the final sum-of-squares image"""
-    n_coils = data_xy.shape[1]
-    num_images = data_xy.shape[3]  # Number of slices/repetitions
-
-    # Calculate grid dimensions for coil images
-    cols = int(np.ceil(np.sqrt(n_coils)))  # Automatic layout for coils
-    rows = int(np.ceil(n_coils / cols))
-
-    # Create figure with appropriate size
-    plt.figure(figsize=(4 * cols, 4 * rows * (num_images + 1)))  # Extra space for SOS images
-
-    # Plot individual coil images
-    for i in range(num_images):
-        plt.suptitle(f'Slice/Repetition {i + 1}', fontsize=16, y=0.95)
-        for coil_idx in range(n_coils):
-            plt.subplot(rows * (num_images + 1), cols, coil_idx + 1 + i * rows * cols)
-            plt.imshow(np.abs(data_xy[:, coil_idx, :, i]), aspect='equal', cmap='gray')
-            plt.axis('off')
-            plt.title(f'Coil {coil_idx + 1}')
-
-    # Plot sum-of-squares images
-    for i in range(num_images):
-        plt.subplot(rows * (num_images + 1), cols, (i + 1) * rows * cols)
-        plt.imshow(sos_image[:, :, i], aspect='equal', cmap='gray')
-        plt.axis('off')
-        plt.title('Sum-of-Squares')
-
-    plt.tight_layout()
-
-    # Save figure if output directory is provided
-    if output_path is not None:
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-
-    plt.show()
-    plt.close()
+    return sos_image, data_xy
 
 
 def run_epi_pipeline_torch(rawdata, device, use_phase_correction=False, show_plots=True, seq=None, output_dir=None):
@@ -349,12 +198,13 @@ def run_epi_pipeline_torch(rawdata, device, use_phase_correction=False, show_plo
         data_xy: Complex image data for all coils
         measured_traj_delay: Calculated trajectory delay
     """
+    rawdata.requires_grad_(True)
     # extract relevant parameters
     nADC = int(seq.get_definition('FrequencyEncodingSteps'))
     Nx = int(seq.get_definition('Nx'))
     Ny = int(seq.get_definition('Ny'))
     Ny_sampled = int(seq.get_definition('NySampled'))
-
+    R = int(seq.get_definition('AccelerationFactor'))
     fov_x, fov_y, fov_z = seq.get_definition('FOV')
     # fov = fov_x
     delta_ky = 1 / fov_y
@@ -381,40 +231,21 @@ def run_epi_pipeline_torch(rawdata, device, use_phase_correction=False, show_plo
         pc_coef_torch = mphase1_torch / (2 * np.pi)
         data_resampled = apply_phase_correction_torch(data_resampled, pc_coef_torch)
 
-    # # stopped here!
-    # data_resampled = data_resampled.cpu().numpy()
-    # ktraj_resampled = ktraj_resampled.cpu().numpy()
-    # # t_adc_resampled = t_adc_resampled.cpu().numpy()
-
     half_fourier = True if seq.get_definition('PartialFourierFactor') < 1 else False
     if half_fourier:
-        print("Correcting for Half Fourier")
+        print("Half Fourier not implemented in pyroch yet, only numpy")
         data_resampled = torch.where(data_resampled == 0, 1e-10, data_resampled)
-        data_full_kspace_torch = create_full_kspace_torch(data_resampled, ktraj_resampled, Ny, delta_ky)
-        data_full_kspace = create_full_kspace(data_resampled.cpu().numpy(), ktraj_resampled.cpu().numpy(), Ny, delta_ky)
+        data_resampled = create_full_kspace_torch(data_resampled, ktraj_resampled, Ny, delta_ky)
+        # data_full_kspace = np.moveaxis(data_resampled, 1, 0)
+        # data_full_kspace = pocs_pf(data_resampled, iter=10)
+        # data_full_kspace = data_resampled.squeeze(-1)
+        # data_full_kspace = np.moveaxis(data_resampled, 0, 1)
 
-        # Compare outputs with L2 norm
-        diff = torch.norm(data_full_kspace_torch - torch.from_numpy(data_full_kspace).to(data_full_kspace_torch.device))
-        print(f"L2 difference: {diff.item()}")
-        exit()
-        # data_full_kspace = np.moveaxis(data_full_kspace, 1, 0)
-        # data_full_kspace = pocs_pf(data_full_kspace, iter=10)
-        # data_full_kspace = data_full_kspace.squeeze(-1)
-        # data_full_kspace = np.moveaxis(data_full_kspace, 0, 1)
-    else:
-        data_full_kspace = data_resampled
+    sos_image, data_xy = reconstruct_images_torch(data_resampled, Ny, Ny)
 
     if show_plots:
-        # plot_kspace_data(data_pc, os.path.join(output_dir, "kspace_partial.png"))
-        plot_kspace_data(data_full_kspace, os.path.join(output_dir, "kspace_full.png"))
-
-    # 5. Reconstruct images
-    sos_image, data_xy = reconstruct_images(data_resampled, Ny_sampled, Ny)
-    sos_image_full_matrix, data_xy_full_matrix = reconstruct_images(data_full_kspace, Ny, Ny)
-
-    if show_plots:
-        # plot_images(sos_image, data_xy, os.path.join(output_dir, 'reconstructed_images_partial.png'))
-        plot_images(sos_image_full_matrix, data_xy_full_matrix,
+        plot_kspace_data(data_resampled.detach().cpu().numpy(), os.path.join(output_dir, "kspace_full.png"))
+        plot_images(sos_image.detach().cpu().numpy(), data_xy.detach().cpu().numpy(),
                     os.path.join(output_dir, 'reconstructed_images_full.png'))
 
     return sos_image, data_xy, measured_traj_delay

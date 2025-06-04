@@ -23,8 +23,7 @@ import time
 
 def main():
 
-    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\matlab\tutorials\tomer_custom_code\epi_rs.seq"
-    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\sequence_writing_code_gre_epi\original_sequences_from_pulseq\gre_pypulseq.seq"
+    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\sequence_writing_code_es_epi\sequences\2025-06-04_epi_Nx192_Ny192_R3_part_fourier_repetitions_1.seq"
     # for plotting graph of the signal evolotion
     seq = pp.Sequence()
     seq.read(seq_file)
