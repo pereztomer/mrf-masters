@@ -122,6 +122,41 @@ def create_full_kspace(data_resampled, ktraj_resampled, Ny, delta_ky):
     return data_full_kspace
 
 
+def create_full_kspace_torch(data_resampled, ktraj_resampled, Ny, delta_ky):
+    """
+    Create full k-space matrix from resampled data using k-space coordinates
+
+    Args:
+        data_resampled: Resampled data (Nx, nCoils, Ny_sampled)
+        ktraj_resampled: K-space coordinates (3, Nx, Ny_sampled)
+        Ny: Full matrix size in y direction
+        delta_ky: K-space spacing in y direction
+
+    Returns:
+        data_full_kspace: Full k-space with zeros in non-acquired regions
+    """
+
+    Nx, nCoils, Ny_sampled = data_resampled.shape
+
+    ky_max = ktraj_resampled[1, Nx // 2, 0]
+
+    # Initialize full k-space with consistent dimension ordering
+    data_full_kspace = torch.empty((Nx, nCoils, Ny), dtype=data_resampled.dtype, device=data_resampled.device)
+    data_full_kspace.zero_()
+
+    # Fill the acquired data
+    for row in range(Ny_sampled):
+        # Get ky for this acquisition (use middle of readout since it should be constant)
+        ky = ktraj_resampled[1, Nx // 2, row]
+
+        # Calculate the ky index directly
+        ky_idx = int((ky_max - ky) / delta_ky)
+
+        # Place the entire readout at this ky position
+        data_full_kspace[:, :, ky_idx] = data_resampled[:, :, row]
+
+    return data_full_kspace
+
 def calculate_phase_correction(data_resampled):
     """Calculate phase correction coefficients"""
     data_odd = np.fft.ifftshift(np.fft.ifft(np.fft.ifftshift(data_resampled[:, :, 0::2], axes=0), axis=0), axes=0)
@@ -346,19 +381,26 @@ def run_epi_pipeline_torch(rawdata, device, use_phase_correction=False, show_plo
         pc_coef_torch = mphase1_torch / (2 * np.pi)
         data_resampled = apply_phase_correction_torch(data_resampled, pc_coef_torch)
 
-    # stopped here!
-    data_resampled = data_resampled.cpu().numpy()
-    ktraj_resampled = ktraj_resampled.cpu().numpy()
-    # t_adc_resampled = t_adc_resampled.cpu().numpy()
+    # # stopped here!
+    # data_resampled = data_resampled.cpu().numpy()
+    # ktraj_resampled = ktraj_resampled.cpu().numpy()
+    # # t_adc_resampled = t_adc_resampled.cpu().numpy()
 
     half_fourier = True if seq.get_definition('PartialFourierFactor') < 1 else False
     if half_fourier:
-        data_resampled = np.where(data_resampled == 0, 1e-10, data_resampled)
-        data_full_kspace = create_full_kspace(data_resampled, ktraj_resampled, Ny, delta_ky)
-        data_full_kspace = np.moveaxis(data_full_kspace, 1, 0)
-        data_full_kspace = pocs_pf(data_full_kspace, iter=10)
-        data_full_kspace = data_full_kspace.squeeze(-1)
-        data_full_kspace = np.moveaxis(data_full_kspace, 0, 1)
+        print("Correcting for Half Fourier")
+        data_resampled = torch.where(data_resampled == 0, 1e-10, data_resampled)
+        data_full_kspace_torch = create_full_kspace_torch(data_resampled, ktraj_resampled, Ny, delta_ky)
+        data_full_kspace = create_full_kspace(data_resampled.cpu().numpy(), ktraj_resampled.cpu().numpy(), Ny, delta_ky)
+
+        # Compare outputs with L2 norm
+        diff = torch.norm(data_full_kspace_torch - torch.from_numpy(data_full_kspace).to(data_full_kspace_torch.device))
+        print(f"L2 difference: {diff.item()}")
+        exit()
+        # data_full_kspace = np.moveaxis(data_full_kspace, 1, 0)
+        # data_full_kspace = pocs_pf(data_full_kspace, iter=10)
+        # data_full_kspace = data_full_kspace.squeeze(-1)
+        # data_full_kspace = np.moveaxis(data_full_kspace, 0, 1)
     else:
         data_full_kspace = data_resampled
 
