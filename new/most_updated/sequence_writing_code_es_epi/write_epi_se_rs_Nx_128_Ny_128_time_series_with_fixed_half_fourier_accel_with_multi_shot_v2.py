@@ -51,12 +51,12 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
         159, 200, 200, 200, 138, 75
     ]
 
-    # flip_angles = flip_angles[:1]
-    # tr_values_ms = tr_values_ms[:1]
+    flip_angles = flip_angles[:1]
+    tr_values_ms = tr_values_ms[:1]
     if part_fourier_factor == 1:
-        seq_filename = f"sequences/{current_date}_epi_multishot_ref_Nx{Nx}_Ny{Ny}_R{acceleration_factor}_repetitions_{len(tr_values_ms)}"
+        seq_filename = f"sequences/{current_date}_epi_multishot_ref_Nx{Nx}_Ny{Ny}_R{acceleration_factor}_reps{len(tr_values_ms)}"
     else:
-        seq_filename = f"sequences/{current_date}_epi_multishot_ref_Nx{Nx}_Ny{Ny}_R{acceleration_factor}_part_fourier_repetitions_{len(tr_values_ms)}"
+        seq_filename = f"sequences/{current_date}_epi_multishot_ref_Nx{Nx}_Ny{Ny}_R{acceleration_factor}_part_fourier_reps{len(tr_values_ms)}"
 
     # Convert from milliseconds to seconds for the sequence timing
     tr_values = [tr_ms / 1000.0 for tr_ms in tr_values_ms]
@@ -356,6 +356,7 @@ def main(plot: bool = False, write_seq: bool = False, seq_filename=f""):
                     f"Warning: Reference shot TR ({desired_tr_ref * 1000:.1f} ms) is too short! Minimum possible TR is {current_ref_duration * 1000:.1f} ms")
 
         seq.add_block(pp.make_delay(3))
+
         # ======
         # MAIN TIME SERIES (UNCHANGED)
         # ======

@@ -68,21 +68,35 @@ def load_mr0_data_torch(seq_file, phantom_path="numerical_brain_cropped.mat", nu
     graph = mr0.compute_graph(seq0.cuda(), obj_p.cuda(), 200, 1e-3)
     signal = mr0.execute_graph(graph, seq0.cuda(), obj_p.cuda(), print_progress=True)
 
+    reference_signal_per_shot = []
+    if use_multi_shot:
+        reference_signal = signal[:Ny * freq_encoding_steps]
+        for shot_number in range(R):
+            raw_ref_shot = reference_signal[shot_number * (NySampled * freq_encoding_steps):(shot_number + 1) * (
+                        NySampled * freq_encoding_steps)]
+            samples_number, coil_number = raw_ref_shot.shape
+            raw_ref_shot = raw_ref_shot.contiguous()
+
+            # Transpose first to simulate column-major ('F') flattening
+            raw_ref_shot = raw_ref_shot.T  # Now shape: (num_coils, num_samples)
+
+            # Then reshape and permute
+            raw_ref_shot = raw_ref_shot.reshape(coil_number, NySampled, freq_encoding_steps).permute(2, 0, 1)
+            reference_signal_per_shot.append(raw_ref_shot)
+
+    time_series_signal = signal[R * (NySampled * freq_encoding_steps):].contiguous()
+
     # Signal shape is (total_samples, actual_coils)
-    total_samples, actual_coils = signal.shape
-
-    # Calculate number of acquisitions based on total samples and nADC
-    nAcq = total_samples // freq_encoding_steps
-
-    signal = signal.contiguous()
+    total_samples, actual_coils = time_series_signal.shape
 
     # Transpose first to simulate column-major ('F') flattening
-    signal_t = signal.T  # Now shape: (num_coils, num_samples)
+    time_series_signal_t = time_series_signal.T  # Now shape: (num_coils, num_samples)
 
-    # Then reshape and permute
-    rawdata = signal_t.reshape(actual_coils, nAcq, freq_encoding_steps).permute(2, 0, 1)
+    # Then reshape and permute - needs to check if nADC  - a paramter that was in the second place
+    # (instead of NySampled) is currect or that we need to have NySampled.
+    rawdata = time_series_signal_t.reshape(actual_coils, NySampled, freq_encoding_steps).permute(2, 0, 1)
 
-    return rawdata
+    return reference_signal_per_shot, rawdata
 
 
 def load_data_torch(raw_data_path, use_mr0=False, seq_file_path=None, phantom_path="numerical_brain_cropped.mat",
@@ -109,8 +123,9 @@ def load_data_torch(raw_data_path, use_mr0=False, seq_file_path=None, phantom_pa
     if use_mr0:
         if seq_file_path is None:
             raise ValueError("seq_file must be provided when use_mr0=True")
-        raw_data = load_mr0_data_torch(seq_file_path, phantom_path, num_coils)
+        reference_signal_per_shot, rawdata = load_mr0_data_torch(seq_file_path, phantom_path, num_coils)
     else:
-        raw_data = load_mat_data_torch(raw_data_path, device)
+        print("Raw data reading not implemented yet")
+        # raw_data = load_mat_data_torch(raw_data_path, device)
 
-    return raw_data, seq
+    return reference_signal_per_shot, rawdata, seq

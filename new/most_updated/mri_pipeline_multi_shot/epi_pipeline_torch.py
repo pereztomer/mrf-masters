@@ -4,12 +4,12 @@ import pypulseq as pp
 import os
 from partial_fourier_recon import pocs_pf
 import torch
-
+from resample_grid import resample_data_torch_diff
 import matplotlib
 
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-from plotting_utils import plot_images, plot_kspace_data
+from plotting_utils import plot_images, plot_kspace_data, plot_single_kspace
 
 
 def calculate_trajectory_delay_torch(rawdata, t_adc, nADC):
@@ -45,7 +45,7 @@ def create_full_kspace_torch(data_resampled, ktraj_resampled, Ny, delta_ky):
     Nx, nCoils, Ny_sampled = data_resampled.shape
 
     ky_max = ktraj_resampled[1, Nx // 2, 0]
-
+    ky_max = 431.817
     # Initialize full k-space with consistent dimension ordering
     data_full_kspace = torch.empty((Nx, nCoils, Ny), dtype=data_resampled.dtype, device=data_resampled.device)
     data_full_kspace.zero_()
@@ -182,7 +182,33 @@ def reconstruct_images_torch(data_pc, Ny_sampled, Ny):
     return sos_image, data_xy
 
 
-def run_epi_pipeline_torch(rawdata, device,
+def find_nonzero_rows(kspace_data, threshold=1e-6):
+    """Find non-zero rows in 2D k-space data."""
+    magnitude = np.abs(kspace_data)
+    row_max = np.max(magnitude, axis=0)
+    return np.where(row_max > threshold)[0]
+
+
+def compare_shots(kspace1, kspace2):
+    """Compare coverage between two k-space shots."""
+    rows1 = find_nonzero_rows(kspace1)
+    rows2 = find_nonzero_rows(kspace2)
+    overlap = np.intersect1d(rows1, rows2)
+
+    print(f"Shot 1 covers {len(rows1)} rows")
+    print(f"Shot 2 covers {len(rows2)} rows")
+    print(f"Overlap: {len(overlap)} rows")
+
+    return rows1, rows2, overlap
+
+
+def image_to_kspace(image):
+    """Convert SOS image back to k-space domain."""
+    return torch.fft.fftshift(torch.fft.fft2(torch.fft.ifftshift(image)))
+
+def run_epi_pipeline_torch(reference_signal_per_shot,
+                           rawdata,
+                           device,
                            use_phase_correction=False,
                            use_grappa=False,
                            show_plots=True,
@@ -192,6 +218,7 @@ def run_epi_pipeline_torch(rawdata, device,
     Complete EPI reconstruction pipeline
     
     Args:
+        reference_signal_per_shot: Complex reference data (multi shot epi)
         rawdata: Complex raw data array
         use_phase_correction: Whether to apply phase correction
         use_grappa: use grappa for accelerated reconstruction
@@ -211,10 +238,54 @@ def run_epi_pipeline_torch(rawdata, device,
     Ny = int(seq.get_definition('Ny'))
     Ny_sampled = int(seq.get_definition('NySampled'))
     R = int(seq.get_definition('AccelerationFactor'))
+
+    freq_encoding_steps = int(seq.get_definition('FrequencyEncodingSteps'))
+
     fov_x, fov_y, fov_z = seq.get_definition('FOV')
     # fov = fov_x
     delta_ky = 1 / fov_y
     ktraj_adc_initial, _, _, _, t_adc_initial = seq.calculate_kspace()
+
+    reference_kspace = None
+    for shot_number in range(len(reference_signal_per_shot)):
+        ref_shot = reference_signal_per_shot[shot_number]
+        ktraj_adc_shot = torch.from_numpy(ktraj_adc_initial[:,
+                                          shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
+                                                      Ny_sampled * freq_encoding_steps)]).to(device)
+        t_adc_initial_shot = torch.from_numpy(t_adc_initial[
+                                              shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
+                                                          Ny_sampled * freq_encoding_steps)]).to(device)
+
+        measured_traj_delay = calculate_trajectory_delay_torch(ref_shot, t_adc_initial_shot, nADC)
+        ktraj_adc, _, _, _, t_adc = seq.calculate_kspace(trajectory_delay=measured_traj_delay)
+        ktraj_adc_shot = torch.from_numpy(ktraj_adc[:,
+                                          shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
+                                                  Ny_sampled * freq_encoding_steps)]).to(device)
+        t_adc_initial_shot = torch.from_numpy(t_adc[
+                                              shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
+                                                      Ny_sampled * freq_encoding_steps)]).to(device)
+
+        ref_shot, ktraj_adc_shot, t_adc_initial_shot = resample_data_torch_diff(ref_shot, ktraj_adc_shot,
+                                                                                t_adc_initial_shot, Nx)
+        mphase1_torch, mphase2_torch, mphase_torch = calculate_phase_correction_torch(ref_shot)
+        pc_coef_torch = mphase1_torch / (2 * np.pi)
+        ref_shot = apply_phase_correction_torch(ref_shot, pc_coef_torch)
+
+        ref_shot = create_full_kspace_torch(ref_shot, ktraj_adc_shot, Ny, delta_ky)
+        if reference_kspace is None:
+            reference_kspace = ref_shot
+        else:
+            reference_kspace += ref_shot
+
+
+    sos_image, data_xy = reconstruct_images_torch(reference_kspace, Ny, Ny)
+    ref_kspace_single_coil = image_to_kspace(sos_image)
+    plot_kspace_data(reference_kspace.detach().cpu().numpy(), os.path.join(output_dir, "kspace_reference.png"))
+    plot_images(sos_image.detach().cpu().numpy(), data_xy.detach().cpu().numpy(),
+                os.path.join(output_dir, 'reconstructed_images_reference.png'))
+    plot_single_kspace(ref_kspace_single_coil,
+                       os.path.join(output_dir, 'single_kspace_reference.png'))
+    exit()
 
     # 2. Calculate trajectory delay
     measured_traj_delay = calculate_trajectory_delay_torch(rawdata, t_adc_initial, nADC)
@@ -228,7 +299,7 @@ def run_epi_pipeline_torch(rawdata, device,
     t_adc = torch.from_numpy(t_adc).to(device)
 
     # 3. Resample data to Cartesian grid
-    from resample_grid import resample_data_torch_diff
+
     data_resampled, ktraj_resampled, t_adc_resampled = resample_data_torch_diff(rawdata, ktraj_adc, t_adc, Nx)
 
     # 4. Calculate and apply phase correction
