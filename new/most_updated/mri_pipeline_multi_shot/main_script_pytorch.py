@@ -27,7 +27,7 @@ reference_signal_per_shot, raw_data_torch, seq = load_data_torch(
     use_mr0=use_mr0_simulator,
     seq_file_path=seq_file_path,
     phantom_path=phantom_path,
-    num_coils=num_coils,
+#    num_coils=num_coils,
     device=device
 )
 
