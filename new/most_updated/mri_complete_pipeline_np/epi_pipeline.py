@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.interpolate import interp1d
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pypulseq as pp
 import os
