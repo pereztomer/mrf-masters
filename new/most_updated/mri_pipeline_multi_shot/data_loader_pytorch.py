@@ -1,102 +1,146 @@
 import h5py
+import matplotlib.pyplot as plt
 import numpy as np
 import MRzeroCore as mr0
 import torch
 import pypulseq as pp
 
 
-def load_mat_data_torch(raw_data_path, device='cpu'):
-    """
-    Load raw data and trajectory from .mat file
-
-    Args:
-        raw_data_path: Path to .mat file
-        device: PyTorch device ('cpu' or 'cuda')
-
-    Returns:
-        rawdata: Complex raw data array (184, 34, 384) as PyTorch tensor on specified device
-    """
-    with h5py.File(raw_data_path, 'r') as f:
-        # Load raw data with transpose (keep original NumPy loading)
-        rawdata_real = np.array(f['rawdata']['real'])
-        rawdata_imag = np.array(f['rawdata']['imag'])
-        rawdata_temp = rawdata_real + 1j * rawdata_imag
-        rawdata_np = rawdata_temp.transpose(2, 1, 0)  # (184, 34, 384)
-
-        # Convert to PyTorch complex tensor and move to device
-        # Use torch.complex64 for complex float32 or torch.complex128 for complex float64
-        rawdata = torch.from_numpy(rawdata_np).to(device=device, dtype=torch.complex64)
-
-    return rawdata
-
-
-def load_mr0_data_torch(seq_file, phantom_path="numerical_brain_cropped.mat", num_coils=None):
+def load_mr0_data_torch(seq_file, phantom_path="numerical_brain_cropped.mat"):
     seq = pp.Sequence()
     seq.read(seq_file)
-
     Nx = int(seq.get_definition('Nx'))
     Ny = int(seq.get_definition('Ny'))
     NySampled = int(seq.get_definition('NySampled'))
     freq_encoding_steps = int(seq.get_definition('FrequencyEncodingSteps'))
     R = int(seq.get_definition('AccelerationFactor'))
-    use_multi_shot = bool(seq.get_definition('MultiShotReference'))
+
     # Load MR0 sequence and phantom
     seq0 = mr0.Sequence.import_file(seq_file)
+    k_space = seq0.get_kspace()
     obj_p = mr0.VoxelGridPhantom.load_mat(phantom_path)
     obj_p = obj_p.interpolate(int(Nx), int(Ny), 1)
-
-    # Add coil sensitivity maps if requested
-    if num_coils is not None:
-        from sensitivity_maps import create_gaussian_sensitivities, normalize_sensitivities
-
-        # Create coil sensitivity maps using our sensitivity_maps module
-        resolution = (int(Nx), int(Ny))
-        sens_maps_2d = create_gaussian_sensitivities(resolution[0], num_coils)
-        sens_maps_2d = normalize_sensitivities(sens_maps_2d)
-
-        # Convert to MR0 format: (num_coils, x, y, z)
-        coil_maps = np.zeros((num_coils, resolution[0], resolution[1], 1), dtype=complex)
-        for c in range(num_coils):
-            coil_maps[c, :, :, 0] = sens_maps_2d[:, :, c]
-
-        # Set the coil maps in the phantom
-        obj_p.coil_sens = torch.tensor(coil_maps, dtype=torch.complex64)
-
+    phantom_data = obj_p.PD.squeeze().cpu().numpy()
     obj_p = obj_p.build()
 
-    # Simulate the sequence
+    # Simulate
     graph = mr0.compute_graph(seq0.cuda(), obj_p.cuda(), 200, 1e-3)
     signal = mr0.execute_graph(graph, seq0.cuda(), obj_p.cuda(), print_progress=True)
 
+    # Extract shots
     reference_signal_per_shot = []
-    if use_multi_shot:
-        reference_signal = signal[:Ny * freq_encoding_steps]
-        for shot_number in range(R):
-            raw_ref_shot = reference_signal[shot_number * (NySampled * freq_encoding_steps):(shot_number + 1) * (
-                        NySampled * freq_encoding_steps)]
-            samples_number, coil_number = raw_ref_shot.shape
-            raw_ref_shot = raw_ref_shot.contiguous()
+    reference_signal = signal[:NySampled * R * freq_encoding_steps]
+    for shot_number in range(R):
+        raw_ref_shot = reference_signal[shot_number * (NySampled * freq_encoding_steps):(shot_number + 1) * (
+                    NySampled * freq_encoding_steps)]
+        reshaped_shot = raw_ref_shot.reshape(NySampled, freq_encoding_steps).cpu().numpy()
+        reference_signal_per_shot.append(reshaped_shot)
 
-            # Transpose first to simulate column-major ('F') flattening
-            raw_ref_shot = raw_ref_shot.T  # Now shape: (num_coils, num_samples)
+    def estimate_and_correct_phases(reference_signal_per_shot):
+        """Estimate and correct phase errors between shots and odd/even lines"""
 
-            # Then reshape and permute
-            raw_ref_shot = raw_ref_shot.reshape(coil_number, NySampled, freq_encoding_steps).permute(2, 0, 1)
-            reference_signal_per_shot.append(raw_ref_shot)
+        corrected_shots = []
 
-    time_series_signal = signal[R * (NySampled * freq_encoding_steps):].contiguous()
+        # Central k-space region for phase estimation
+        central_region = slice(reference_signal_per_shot[0].shape[0] // 2 - 2,
+                               reference_signal_per_shot[0].shape[0] // 2 + 2)
 
-    # Signal shape is (total_samples, actual_coils)
-    total_samples, actual_coils = time_series_signal.shape
+        for shot_idx, shot_data in enumerate(reference_signal_per_shot):
+            corrected_shot = shot_data.copy()
 
-    # Transpose first to simulate column-major ('F') flattening
-    time_series_signal_t = time_series_signal.T  # Now shape: (num_coils, num_samples)
+            # Apply EPI alternating readout correction first
+            corrected_shot[1::2, :] = corrected_shot[1::2, ::-1]
 
-    # Then reshape and permute - needs to check if nADC  - a paramter that was in the second place
-    # (instead of NySampled) is currect or that we need to have NySampled.
-    rawdata = time_series_signal_t.reshape(actual_coils, NySampled, freq_encoding_steps).permute(2, 0, 1)
+            # Phase correction between odd/even lines within shot
+            if shot_idx == 0:  # Use first shot as reference
+                reference_even = np.mean(corrected_shot[0::2, :], axis=0)
+                reference_odd = np.mean(corrected_shot[1::2, :], axis=0)
+                base_phase_diff = np.angle(reference_odd) - np.angle(reference_even)
 
-    return reference_signal_per_shot, rawdata
+            # Correct odd/even phase difference
+            phase_correction_odd = np.exp(-1j * base_phase_diff)
+            corrected_shot[1::2, :] *= phase_correction_odd
+
+            # Inter-shot phase correction
+            if shot_idx > 0:  # Correct relative to first shot
+                shot_ref = np.mean(corrected_shot[central_region, :], axis=0)
+                first_shot_ref = np.mean(corrected_shots[0][central_region, :], axis=0)
+
+                # Estimate phase difference
+                phase_diff = np.angle(shot_ref) - np.angle(first_shot_ref)
+
+                # Apply phase correction across entire shot
+                phase_correction = np.exp(-1j * phase_diff)
+                corrected_shot *= phase_correction
+
+            corrected_shots.append(corrected_shot)
+
+        return corrected_shots
+
+    def restore_conjugate_symmetry(kspace):
+        """Restore conjugate symmetry for half-Fourier data"""
+        kspace_full = kspace.copy()
+        acquired_lines = NySampled * R  # 108
+
+        for i in range(acquired_lines, kspace.shape[0]):
+            mirror_idx = kspace.shape[0] - 1 - i
+            if mirror_idx >= 0 and mirror_idx < acquired_lines:
+                kspace_full[i, :] = np.conj(kspace_full[mirror_idx, ::-1])
+
+        return kspace_full
+
+    # Apply phase corrections
+    corrected_shots = estimate_and_correct_phases(reference_signal_per_shot)
+
+    # Half-Fourier Multi-shot EPI Reconstruction with phase correction
+    full_kspace_multi = np.zeros((Ny, freq_encoding_steps), dtype=complex)
+
+    for shot_idx, corrected_shot in enumerate(corrected_shots):
+        end_idx = shot_idx + NySampled * R
+        full_kspace_multi[shot_idx:end_idx:R, :] = corrected_shot
+
+    # Restore conjugate symmetry for half-Fourier
+    full_kspace_multi = restore_conjugate_symmetry(full_kspace_multi)
+    multi_shot_image = np.fft.fftshift(np.fft.ifft2(full_kspace_multi))
+
+    # Individual shots with phase correction
+    shot_images = []
+    for shot_idx, corrected_shot in enumerate(corrected_shots):
+        full_kspace_single = np.zeros((Ny, freq_encoding_steps), dtype=complex)
+
+        end_idx = shot_idx + NySampled * R
+        full_kspace_single[shot_idx:end_idx:R, :] = corrected_shot
+
+        full_kspace_single = restore_conjugate_symmetry(full_kspace_single)
+        shot_image = np.fft.fftshift(np.fft.ifft2(full_kspace_single))
+        shot_images.append(shot_image)
+
+    # Display results
+    import matplotlib.pyplot as plt
+    fig, axes = plt.subplots(1, 2 + R, figsize=(5 * (2 + R), 5))
+
+    # Phantom
+    axes[0].imshow(np.abs(phantom_data), cmap='gray')
+    axes[0].set_title('Ground Truth')
+    axes[0].axis('off')
+
+    # Multi-shot result with phase correction
+    axes[1].imshow(np.abs(multi_shot_image), cmap='gray')
+    axes[1].set_title('Multi-Shot (Phase Corrected)')
+    axes[1].axis('off')
+
+    # Individual shots with phase correction
+    for i, shot_img in enumerate(shot_images):
+        axes[2 + i].imshow(np.abs(shot_img), cmap='gray')
+        axes[2 + i].set_title(f'Shot {i} (Phase Corrected)')
+        axes[2 + i].axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
+    exit()
+
+
 
 
 def load_data_torch(raw_data_path, use_mr0=False, seq_file_path=None, phantom_path="numerical_brain_cropped.mat",
@@ -123,7 +167,7 @@ def load_data_torch(raw_data_path, use_mr0=False, seq_file_path=None, phantom_pa
     if use_mr0:
         if seq_file_path is None:
             raise ValueError("seq_file must be provided when use_mr0=True")
-        reference_signal_per_shot, rawdata = load_mr0_data_torch(seq_file_path, phantom_path, num_coils)
+        reference_signal_per_shot, rawdata = load_mr0_data_torch(seq_file_path, phantom_path)
     else:
         print("Raw data reading not implemented yet")
         # raw_data = load_mat_data_torch(raw_data_path, device)

@@ -53,8 +53,11 @@ def load_mr0_data(seq_file, phantom_path="numerical_brain_cropped.mat", num_coil
 
     obj_p = obj_p.build()
     # Simulate the sequence
-    graph = mr0.compute_graph(seq0.cuda(), obj_p.cuda(), 200, 1e-3)
-    signal = mr0.execute_graph(graph, seq0.cuda(), obj_p.cuda(), print_progress=True)
+    # graph = mr0.compute_graph(seq0.cuda(), obj_p.cuda(), 200, 1e-3)
+    # signal = mr0.execute_graph(graph, seq0.cuda(), obj_p.cuda(), print_progress=True)
+
+    graph = mr0.compute_graph(seq0, obj_p, 200, 1e-3)
+    signal = mr0.execute_graph(graph, seq0, obj_p, print_progress=True)
 
     # Convert signal to rawdata format (you may need to adjust this based on signal structure)
     # Signal comes as 2D array: (total_samples, coils) e.g., (70000, 1) or (70000, nCoils)

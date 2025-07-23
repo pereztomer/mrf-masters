@@ -19,12 +19,12 @@ def main(plot: bool = False, write_seq: bool = False,
     # SETUP
     # ======
     fov = 220e-3  # Define FOV and resolution
-    Nx = 128
-    Ny = 128
+    Nx = 192
+    Ny = 192
     slice_thickness = 3e-3  # Slice thickness
     n_slices = 1
     # TE = 40e-3
-    TE = 0.15
+    TE = 0.2
     pe_enable = 1  # Flag to quickly disable phase encoding (1/0) as needed for the delay calibration
     ro_os = 1  # Oversampling factor
     readout_time = 2 * 4.2e-4  # Readout bandwidth
@@ -60,7 +60,7 @@ def main(plot: bool = False, write_seq: bool = False,
     system = pp.Opts(
         max_grad=60,
         grad_unit='mT/m',
-        max_slew=150,
+        max_slew=100,
         slew_unit='T/m/s',
         rf_ringdown_time=30e-6,
         rf_dead_time=100e-6,
@@ -365,4 +365,4 @@ def main(plot: bool = False, write_seq: bool = False,
 
 
 if __name__ == '__main__':
-    main(plot=True, write_seq=True)
+    main(plot=False, write_seq=True)

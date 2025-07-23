@@ -21,7 +21,7 @@ max_iterations = 150  # Maximum training iterations
 experiment_id = 'FLASH_2D_Fit'
 
 # Plotting flag
-PLOT_GROUND_TRUTH = True  # Set to False to disable plotting
+PLOT_GROUND_TRUTH = False  # Set to False to disable plotting
 
 
 def simulate_and_process_mri(obj_p, experiment_id, n_TI, Nread, Nphase, permvec, plot_results=False,

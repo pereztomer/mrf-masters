@@ -3,10 +3,13 @@ from epi_pipeline import run_epi_pipeline
 import os
 
 # Configuration
-base_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\test_3_epi_se_rs\25_5_25\2025-05-25_epi_Nx128_Ny128_repetitions_1"
-raw_data_path = os.path.join(base_path, "data.mat")
-output_dir = os.path.join(base_path, "plots")
-seq_file_path = os.path.join(base_path, "2025-05-25_epi_Nx128_Ny128_repetitions_1.seq")
+# base_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\test_3_epi_se_rs\25_5_25\2025-05-25_epi_Nx128_Ny128_repetitions_1"
+# raw_data_path = os.path.join(base_path, "data.mat")
+# output_dir = os.path.join(base_path, "plots")
+# seq_file_path = os.path.join(base_path, "2025-05-25_epi_Nx128_Ny128_repetitions_1.seq")
+raw_data_path = ""
+output_dir = "temp2"
+seq_file_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\sequence_writing_code_es_epi\6.5.25_epi_time_series_with_inversion_spoiler_gradient_half_fourier.seq"
 
 # Create output directory if it doesn't exist
 os.makedirs(output_dir, exist_ok=True)

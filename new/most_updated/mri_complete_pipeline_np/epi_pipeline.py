@@ -1,11 +1,13 @@
 import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pypulseq as pp
 import os
 from partial_fourier_recon import pocs_pf
+
 
 def calculate_fov_parameters(ktraj_adc, nADC):
     """Calculate FOV and matrix size parameters from k-space trajectory"""
@@ -105,7 +107,6 @@ def create_full_kspace(data_resampled, ktraj_resampled, Ny, delta_ky):
     Nx, nCoils, Ny_sampled = data_resampled.shape
 
     ky_max = ktraj_resampled[1, Nx // 2, 0]
-
 
     # Initialize full k-space with consistent dimension ordering
     data_full_kspace = np.zeros((Nx, nCoils, Ny), dtype=complex)
@@ -249,10 +250,15 @@ def plot_images(sos_image, data_xy, output_path=None):
 
     # Save figure if output directory is provided
     if output_path is not None:
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.savefig(output_path, dpi=1000, bbox_inches='tight')
 
     plt.show()
     plt.close()
+
+    # Save SOS images separately
+    if output_path is not None:
+        for i in range(num_images):
+            plt.imsave(f"{output_path}_SOS_{i + 1}.png", sos_image[:, :, i], cmap='gray')
 
 
 def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=None, output_dir=None):
@@ -279,7 +285,7 @@ def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=N
 
     fov_x, fov_y, fov_z = seq.get_definition('FOV')
     # fov = fov_x
-    delta_ky = 1/fov_y
+    delta_ky = 1 / fov_y
     ktraj_adc_initial, _, _, _, t_adc_initial = seq.calculate_kspace()
 
     # fov, Nx, Ny, Ny_sampled, delta_ky = calculate_fov_parameters(ktraj_adc, nADC)
@@ -300,7 +306,6 @@ def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=N
         pc_coef = mphase1 / (2 * np.pi)
         data_resampled = apply_phase_correction(data_resampled, pc_coef)
 
-
     half_fourier = True if seq.get_definition('PartialFourierFactor') < 1 else False
     if half_fourier:
         data_resampled = np.where(data_resampled == 0, 1e-10, data_resampled)
@@ -312,7 +317,6 @@ def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=N
     else:
         data_full_kspace = data_resampled
 
-
     if show_plots:
         # plot_kspace_data(data_pc, os.path.join(output_dir, "kspace_partial.png"))
         plot_kspace_data(data_full_kspace, os.path.join(output_dir, "kspace_full.png"))
@@ -323,6 +327,7 @@ def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=N
 
     if show_plots:
         # plot_images(sos_image, data_xy, os.path.join(output_dir, 'reconstructed_images_partial.png'))
-        plot_images(sos_image_full_matrix, data_xy_full_matrix, os.path.join(output_dir, 'reconstructed_images_full.png'))
+        plot_images(sos_image_full_matrix, data_xy_full_matrix,
+                    os.path.join(output_dir, 'reconstructed_images_full.png'))
 
     return sos_image, data_xy, measured_traj_delay

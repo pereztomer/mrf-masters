@@ -231,7 +231,6 @@ def run_epi_pipeline_torch(reference_signal_per_shot,
         data_xy: Complex image data for all coils
         measured_traj_delay: Calculated trajectory delay
     """
-    rawdata.requires_grad_(True)
     # extract relevant parameters
     nADC = int(seq.get_definition('FrequencyEncodingSteps'))
     Nx = int(seq.get_definition('Nx'))
@@ -246,39 +245,40 @@ def run_epi_pipeline_torch(reference_signal_per_shot,
     delta_ky = 1 / fov_y
     ktraj_adc_initial, _, _, _, t_adc_initial = seq.calculate_kspace()
     from fix_phase_diff import fix_odd_even_phases
-    fix_odd_even_phases(reference_signal_per_shot, coil_for_analysis=0)
+    # fix_odd_even_phases(reference_signal_per_shot, coil_for_analysis=0)
 
-    exit()
+
     reference_kspace = None
     for shot_number in range(len(reference_signal_per_shot)):
         ref_shot = reference_signal_per_shot[shot_number]
-        # ktraj_adc_shot = torch.from_numpy(ktraj_adc_initial[:,
-        #                                   shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
-        #                                               Ny_sampled * freq_encoding_steps)]).to(device)
-        # t_adc_initial_shot = torch.from_numpy(t_adc_initial[
-        #                                       shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
-        #                                                   Ny_sampled * freq_encoding_steps)]).to(device)
-        #
-        # measured_traj_delay = calculate_trajectory_delay_torch(ref_shot, t_adc_initial_shot, nADC)
+        ktraj_adc_shot = torch.from_numpy(ktraj_adc_initial[:,
+                                          shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
+                                                      Ny_sampled * freq_encoding_steps)]).to(device)
+        t_adc_initial_shot = torch.from_numpy(t_adc_initial[
+                                              shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
+                                                          Ny_sampled * freq_encoding_steps)]).to(device)
+
+        measured_traj_delay = calculate_trajectory_delay_torch(ref_shot, t_adc_initial_shot, nADC)
+        ktraj_adc, _, _, _, t_adc = seq.calculate_kspace(trajectory_delay=0)
         # ktraj_adc, _, _, _, t_adc = seq.calculate_kspace(trajectory_delay=measured_traj_delay)
-        # ktraj_adc_shot = torch.from_numpy(ktraj_adc[:,
-        #                                   shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
-        #                                           Ny_sampled * freq_encoding_steps)]).to(device)
-        # t_adc_initial_shot = torch.from_numpy(t_adc[
-        #                                       shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
-        #                                               Ny_sampled * freq_encoding_steps)]).to(device)
-        #
-        # ref_shot, ktraj_adc_shot, t_adc_initial_shot = resample_data_torch_diff(ref_shot, ktraj_adc_shot,
-        #                                                                         t_adc_initial_shot, Nx)
-        # mphase1_torch, mphase2_torch, mphase_torch = calculate_phase_correction_torch(ref_shot)
-        # pc_coef_torch = mphase1_torch / (2 * np.pi)
-        # ref_shot = apply_phase_correction_torch(ref_shot, pc_coef_torch)
-        #
-        # ref_shot = create_full_kspace_torch(ref_shot, ktraj_adc_shot, Ny, delta_ky)
-        # if reference_kspace is None:
-        #     reference_kspace = ref_shot
-        # else:
-        #     reference_kspace += ref_shot
+        ktraj_adc_shot = torch.from_numpy(ktraj_adc[:,
+                                          shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
+                                                  Ny_sampled * freq_encoding_steps)]).to(device)
+        t_adc_initial_shot = torch.from_numpy(t_adc[
+                                              shot_number * (Ny_sampled * freq_encoding_steps):(shot_number + 1) * (
+                                                      Ny_sampled * freq_encoding_steps)]).to(device)
+
+        ref_shot, ktraj_adc_shot, t_adc_initial_shot = resample_data_torch_diff(ref_shot, ktraj_adc_shot,
+                                                                                t_adc_initial_shot, Nx)
+        mphase1_torch, mphase2_torch, mphase_torch = calculate_phase_correction_torch(ref_shot)
+        pc_coef_torch = mphase1_torch / (2 * np.pi)
+        ref_shot = apply_phase_correction_torch(ref_shot, pc_coef_torch)
+
+        ref_shot = create_full_kspace_torch(ref_shot, ktraj_adc_shot, Ny, delta_ky)
+        if reference_kspace is None:
+            reference_kspace = ref_shot
+        else:
+            reference_kspace += ref_shot
 
 
 
