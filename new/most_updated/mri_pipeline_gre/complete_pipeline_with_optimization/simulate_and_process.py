@@ -114,7 +114,7 @@ def preprocess_raw_data(seq, signal, R, Nread, Nphase_in_practice, fourier_facto
     return calibration_img_sos, time_series_shots
 
 
-def simulate_and_process_mri(obj_p, seq_file_path):
+def simulate_and_process_mri(obj_p, seq_file_path, num_coils):
     # sequence parameter loading:
     seq_pulseq = pp.Sequence()
     seq_pulseq.read(seq_file_path)
@@ -130,6 +130,6 @@ def simulate_and_process_mri(obj_p, seq_file_path):
     graph = mr0.compute_graph(seq_mr0.cuda(), obj_p.cuda(), 2048, 1e-3)
     signal = mr0.execute_graph(graph, seq_mr0.cuda(), obj_p.cuda(), print_progress=True)
 
-    calibration_img_sos, time_series_shots = preprocess_raw_data(seq_pulseq, signal, R, Nx, NySampled, fourier_factor, time_steps,num_coils=34)
+    calibration_img_sos, time_series_shots = preprocess_raw_data(seq_pulseq, signal, R, Nx, NySampled, fourier_factor, time_steps,num_coils=num_coils)
 
     return calibration_img_sos, time_series_shots
