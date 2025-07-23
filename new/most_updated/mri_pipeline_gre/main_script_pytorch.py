@@ -8,7 +8,8 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
 # Configuration
-base_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\14.7.25\epi_gre_mrf_epi"
+base_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi"
+
 raw_data_path = os.path.join(base_path, "data.mat")
 output_dir = os.path.join(base_path, "plots")
 seq_file_path = os.path.join(base_path, "epi_gre_mrf_epi.seq")

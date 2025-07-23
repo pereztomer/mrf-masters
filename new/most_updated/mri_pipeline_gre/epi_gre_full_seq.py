@@ -30,10 +30,10 @@ def mrf_epi_sequence():
     # Imaging parameters
     fov = 220e-3
     slice_thickness = 8e-3
-    Nread = Nphase = 36
+    Nread = Nphase = 192
     R = 3
     assert Nread % 2 == 0 and Nread % R == 0
-    seq_filename = "epi_gre_mrf_epi_32.seq"
+    seq_filename = "epi_gre_mrf_epi.seq"
     # Partial Fourier
     fourier_factor = 9 / 16
     fourier_factor = 1

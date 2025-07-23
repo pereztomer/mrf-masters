@@ -14,9 +14,10 @@ from plotting_utils import *
 import os
 
 # ===== SETUP PARAMETERS =====
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\20.7.25\epi_gre_mrf_epi_32\epi_gre_mrf_epi_32.seq"
+seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi\epi_gre_mrf_epi.seq"
 phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\20.7.25\epi_gre_mrf_epi_32"
+output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi"
+
 epochs = 10000
 
 # ===== CREATE OUTPUT FOLDERS =====
@@ -32,7 +33,7 @@ Nx = int(seq_pulseq.get_definition('Nx'))
 Ny = int(seq_pulseq.get_definition('Ny'))
 flip_angles = seq_pulseq.get_definition('FlipAngles')
 time_steps_number = len(flip_angles)
-num_coils = 4
+num_coils = 34
 # ===== PLOTTING FLAG =====
 plot = True
 
@@ -44,7 +45,7 @@ PD_ground_truth = phantom.PD  # ground truth
 obj_p = phantom.build()  # phantom for simulation
 
 # ===== INITIAL SIMULATION DATA =====
-calibration_data, time_series_shots = simulate_and_process_mri(obj_p, seq_path,num_coils)
+calibration_data, time_series_shots = simulate_and_process_mri(obj_p, seq_path, num_coils)
 
 if plot:
     plot_phantom(phantom, save_path=os.path.join(plots_output_path, 'phantom.png'))
@@ -54,8 +55,15 @@ if plot:
 # ===== DEFINE NETWORK =====
 from unet_3d_pre_trained import create_vit_qmri_model
 
-model = create_vit_qmri_model(time_steps=len(time_series_shots), n_outputs=3, img_size=Nx, pretrained=True, device='cuda')
 
+model = create_vit_qmri_model(
+    time_steps=len(time_series_shots),
+    n_outputs=3,
+    img_size=Nx,
+    model_size="tiny",
+    pretrained=True,  # Disable pretrained for comparison
+    device='cuda'
+)
 # ===== OPTIMIZATION SETUP =====
 optimizer = torch.optim.Adam(model.parameters(), lr=0.00005)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.99)
@@ -74,10 +82,9 @@ for iteration in range(epochs):
     # Forward
     parameters_heat_map_predictions = model(real_images_batch)
 
-    t1_predicted = parameters_heat_map_predictions.squeeze()[0] #.detach().requires_grad_()
-    t2_predicted = parameters_heat_map_predictions.squeeze()[1] #.detach().requires_grad_()
-    pd_predicted = parameters_heat_map_predictions.squeeze()[2] #.detach().requires_grad_()
-
+    t1_predicted = parameters_heat_map_predictions.squeeze()[0]  # .detach().requires_grad_()
+    t2_predicted = parameters_heat_map_predictions.squeeze()[1]  # .detach().requires_grad_()
+    pd_predicted = parameters_heat_map_predictions.squeeze()[2]  # .detach().requires_grad_()
 
     # Create phantom with predicted T1,T2 and PD
     obj_p_pred = phantom_creator.create_phantom_with_custom_parameters(

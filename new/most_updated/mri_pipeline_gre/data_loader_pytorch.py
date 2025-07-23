@@ -266,7 +266,7 @@ def sort_data_from_simulator(seq, signal, R, Nread, Nphase_in_practice, fourier_
 
     block_size = (4, 4)
     acc_factors_2d = (1, 3)
-    regularization_factor = 0.00001
+    regularization_factor = 0.1
     device = "cuda"
     calibration_data = torch.sum(torch.stack(shots), dim=0)
     grappa_weights_torch = eqdist_grappa_cuda.GRAPPA_calibrate_weights_2d_torch(calibration_data,
@@ -295,7 +295,6 @@ def load_mr0_data_torch(seq_file, phantom_path="numerical_brain_cropped.mat", nu
     Nx = int(seq.get_definition('Nx'))
     Ny = int(seq.get_definition('Ny'))
     NySampled = int(seq.get_definition('NySampled'))
-    freq_encoding_steps = int(seq.get_definition('FrequencyEncodingSteps'))
     R = int(seq.get_definition('AccelerationFactor'))
     flip_angles = seq.get_definition('FlipAngles')
     use_multi_shot = bool(seq.get_definition('MultiShotReference'))
