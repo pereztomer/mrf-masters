@@ -14,11 +14,11 @@ from plotting_utils import *
 import os
 
 # ===== SETUP PARAMETERS =====
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi\epi_gre_mrf_epi.seq"
+seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_36\epi_gre_mrf_epi.seq"
 phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi"
+output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_36\run_5"
 
-epochs = 10000
+epochs = 150
 
 # ===== CREATE OUTPUT FOLDERS =====
 plots_output_path = os.path.join(output_path, 'plots')
@@ -38,14 +38,19 @@ num_coils = 34
 plot = True
 
 # ===== PREPARE PHANTOM =====
-phantom = phantom_creator.create_phantom(Nx, Ny, phantom_path, num_coils=num_coils)
+phantom, coil_maps = phantom_creator.create_phantom(Nx, Ny, phantom_path, num_coils=num_coils)
+coil_maps = coil_maps.to("cuda")
 T1_ground_truth = phantom.T1  # ground truth
 T2_ground_truth = phantom.T2  # ground truth
 PD_ground_truth = phantom.PD  # ground truth
 obj_p = phantom.build()  # phantom for simulation
 
 # ===== INITIAL SIMULATION DATA =====
-calibration_data, time_series_shots = simulate_and_process_mri(obj_p, seq_path, num_coils)
+calibration_data, time_series_shots, grappa_weights_torch = simulate_and_process_mri(obj_p, seq_path, num_coils)
+grappa_weights_torch = grappa_weights_torch.detach()
+
+mask = calibration_data > 100
+mask = mask.to("cuda")
 
 if plot:
     plot_phantom(phantom, save_path=os.path.join(plots_output_path, 'phantom.png'))
@@ -60,13 +65,13 @@ model = create_vit_qmri_model(
     time_steps=len(time_series_shots),
     n_outputs=3,
     img_size=Nx,
-    model_size="tiny",
+    model_size="base",
     pretrained=True,  # Disable pretrained for comparison
     device='cuda'
 )
 # ===== OPTIMIZATION SETUP =====
-optimizer = torch.optim.Adam(model.parameters(), lr=0.00005)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.99)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.99)
 losses = []
 
 # ===== ADD BATCH DIMENSION =====
@@ -86,6 +91,10 @@ for iteration in range(epochs):
     t2_predicted = parameters_heat_map_predictions.squeeze()[1]  # .detach().requires_grad_()
     pd_predicted = parameters_heat_map_predictions.squeeze()[2]  # .detach().requires_grad_()
 
+    t1_predicted = t1_predicted * mask.float()
+    t2_predicted = t2_predicted * mask.float()
+    pd_predicted = pd_predicted * mask.float()
+
     # Create phantom with predicted T1,T2 and PD
     obj_p_pred = phantom_creator.create_phantom_with_custom_parameters(
         T1_map=t1_predicted,
@@ -94,12 +103,12 @@ for iteration in range(epochs):
         Nread=Nx,
         Nphase=Ny,
         phantom_path=phantom_path,
-        num_coils=num_coils
+        coil_maps=coil_maps
     )
 
     obj_p_pred = obj_p_pred.build()
     # Simulate images with predicted T1
-    sim_calibration_img_sos, sim_images = simulate_and_process_mri(obj_p_pred, seq_path, num_coils)
+    sim_calibration_img_sos, sim_images, _ = simulate_and_process_mri(obj_p_pred, seq_path, num_coils, grappa_weights_torch=grappa_weights_torch)
     sim_images_batch = sim_images.unsqueeze(0)
 
     # Compute loss
@@ -117,79 +126,55 @@ for iteration in range(epochs):
     # Progress
     print(f"Iteration {iteration}: Loss = {image_loss.item():.8f}")
 
-    if iteration % 50 == 0:
-        fig = plt.figure(figsize=(24, 20))  # make taller for 4 rows
+    if iteration % 3 == 0:
 
-        # === Row 1: Ground truth maps ===
-        ax1 = plt.subplot(4, 4, 1)
-        im1 = ax1.imshow(T1_ground_truth.squeeze().cpu().numpy(), cmap='viridis')
-        ax1.set_title('Ground Truth T1 Map')
-        ax1.axis('off')
-        plt.colorbar(im1, ax=ax1)
+        fig = plt.figure(figsize=(24, 20))
 
-        ax2 = plt.subplot(4, 4, 2)
-        im2 = ax2.imshow(T2_ground_truth.squeeze().cpu().numpy(), cmap='viridis')
-        ax2.set_title('Ground Truth T2 Map')
-        ax2.axis('off')
-        plt.colorbar(im2, ax=ax2)
-
-        ax3 = plt.subplot(4, 4, 3)
-        im3 = ax3.imshow(PD_ground_truth.squeeze().cpu().numpy(), cmap='viridis')
-        ax3.set_title('Ground Truth PD Map')
-        ax3.axis('off')
-        plt.colorbar(im3, ax=ax3)
-
-        # leave cell 4 empty or add something else
-        ax4 = plt.subplot(4, 4, 4)
-        ax4.axis('off')
-
-        # === Row 2: Predicted maps ===
-        ax5 = plt.subplot(4, 4, 5)
-        im5 = ax5.imshow(t1_predicted.squeeze().detach().cpu().numpy(), cmap='viridis')
-        ax5.set_title(f'Predicted T1 Map (Iter {iteration})')
-        ax5.axis('off')
-        plt.colorbar(im5, ax=ax5)
-
-        ax6 = plt.subplot(4, 4, 6)
-        im6 = ax6.imshow(t2_predicted.squeeze().detach().cpu().numpy(), cmap='viridis')
-        ax6.set_title(f'Predicted T2 Map (Iter {iteration})')
-        ax6.axis('off')
-        plt.colorbar(im6, ax=ax6)
-
-        ax7 = plt.subplot(4, 4, 7)
-        im7 = ax7.imshow(pd_predicted.squeeze().detach().cpu().numpy(), cmap='viridis')
-        ax7.set_title(f'Predicted PD Map (Iter {iteration})')
-        ax7.axis('off')
-        plt.colorbar(im7, ax=ax7)
-
-        # leave cell 8 empty or add something else
-        ax8 = plt.subplot(4, 4, 8)
-        ax8.axis('off')
-
-        # === Row 3: Real images time series ===
+        # Prepare data & vmin/vmax
+        maps = {
+            'T1': (T1_ground_truth, t1_predicted),
+            'T2': (T2_ground_truth, t2_predicted),
+            'PD': (PD_ground_truth, pd_predicted)
+        }
         real_imgs = real_images_batch.squeeze().detach().cpu().numpy()
-        for t in range(min(time_steps_number, 4)):
-            ax = plt.subplot(4, 4, 9 + t)  # slots 9,10,11,12
-            im = ax.imshow(real_imgs[t], cmap='gray')
-            ax.set_title(f'Real Image t={t}')
-            ax.axis('off')
-            plt.colorbar(im, ax=ax)
-
-        # === Row 4: Simulated / predicted images time series ===
         sim_imgs = sim_images_batch.squeeze().detach().cpu().numpy()
-        for t in range(min(time_steps_number, 4)):
-            ax = plt.subplot(4, 4, 13 + t)  # slots 13,14,15,16
-            im = ax.imshow(sim_imgs[t], cmap='gray')
-            ax.set_title(f'Sim Image t={t}')
+        img_vmin, img_vmax = real_imgs.min(), real_imgs.max()
+        img_vmin = min(img_vmin, sim_imgs.min())
+        img_vmax = max(img_vmax, sim_imgs.max())
+
+        # === Rows 1 & 2: GT and predicted maps ===
+        for idx, (name, (gt, pred)) in enumerate(maps.items()):
+            gt_np, pred_np = gt.squeeze().cpu().numpy(), pred.squeeze().detach().cpu().numpy()
+            vmin, vmax = min(gt_np.min(), pred_np.min()), max(gt_np.max(), pred_np.max())
+
+            for row, data, title in [(1, gt_np, f'Ground Truth {name}'),
+                                     (2, pred_np, f'Predicted {name} (Iter {iteration})')]:
+                ax = plt.subplot(4, 4, (row - 1) * 4 + idx + 1)
+                im = ax.imshow(data, cmap='viridis', vmin=vmin, vmax=vmax)
+                ax.set_title(title)
+                ax.axis('off')
+                plt.colorbar(im, ax=ax)
+
+        # Fill empty cells in cols 4
+        for row in [1, 2]:
+            ax = plt.subplot(4, 4, row * 4)
             ax.axis('off')
-            plt.colorbar(im, ax=ax)
+
+        # === Rows 3 & 4: time series images ===
+        for t in range(min(time_steps_number, 4)):
+            for row, imgs, label in [(3, real_imgs, 'Real'), (4, sim_imgs, 'Sim')]:
+                ax = plt.subplot(4, 4, (row - 1) * 4 + t + 1)
+                im = ax.imshow(imgs[t], cmap='gray', vmin=img_vmin, vmax=img_vmax)
+                ax.set_title(f'{label} Image t={t}')
+                ax.axis('off')
+                plt.colorbar(im, ax=ax)
 
         plt.tight_layout()
-        plot_filename = f'iteration_{iteration:04d}.png'
-        plot_save_path = os.path.join(plots_output_path, plot_filename)
-        plt.savefig(plot_save_path)
+        os.makedirs(os.path.join(plots_output_path, "iterations"), exist_ok=True)
+        plot_path = os.path.join(plots_output_path, "iterations", f'iteration_{iteration:04d}.png')
+        plt.savefig(plot_path)
         plt.close()
-        print(f"Saved iteration plot to {plot_save_path}")
+        print(f"Saved iteration plot to {plot_path}")
 
     # Early stopping
     if image_loss.item() < 1e-7:

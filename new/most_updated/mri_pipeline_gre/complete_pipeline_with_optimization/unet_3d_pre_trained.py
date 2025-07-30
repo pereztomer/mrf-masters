@@ -73,7 +73,7 @@ class ViTEncoder(nn.Module):
 
 
 class ConvDecoder(nn.Module):
-    def __init__(self, embed_dim=768, img_size=192, patch_size=16, time_steps=8, n_outputs=3):
+    def __init__(self, embed_dim=768, img_size=192, patch_size=16, time_steps=8, n_outputs=3, decoder_features=512):
         super().__init__()
         self.embed_dim = embed_dim
         self.patch_size = patch_size
@@ -84,11 +84,11 @@ class ConvDecoder(nn.Module):
         self.patch_to_spatial = nn.Linear(embed_dim, embed_dim)
         self.temporal_fusion = nn.Conv2d(embed_dim * time_steps, embed_dim, kernel_size=1)
 
-        # Build decoder layers
+        # Build decoder layers with configurable feature sizes
         decoder_layers = []
         in_ch = embed_dim
         for i in range(self.upsampling_steps):
-            out_ch = max(512 // (2 ** i), 64)
+            out_ch = max(decoder_features // (2 ** i), 64)
             decoder_layers.append(nn.Sequential(
                 nn.ConvTranspose2d(in_ch, out_ch, kernel_size=2, stride=2),
                 nn.BatchNorm2d(out_ch),
@@ -123,11 +123,12 @@ class ConvDecoder(nn.Module):
 
 
 class ViTQMRIUNet(nn.Module):
-    def __init__(self, img_size=192, patch_size=16, time_steps=8, n_outputs=3, pretrained=True):
+    def __init__(self, img_size=192, patch_size=16, time_steps=8, n_outputs=3,
+                 embed_dim=768, depth=12, num_heads=12, decoder_features=512, pretrained=True):
         super().__init__()
 
-        self.encoder = ViTEncoder(img_size, patch_size, time_steps, 768, 12, 12)
-        self.decoder = ConvDecoder(768, img_size, patch_size, time_steps, n_outputs)
+        self.encoder = ViTEncoder(img_size, patch_size, time_steps, embed_dim, depth, num_heads)
+        self.decoder = ConvDecoder(embed_dim, img_size, patch_size, time_steps, n_outputs, decoder_features)
 
         if pretrained:
             self._load_pretrained_weights()
@@ -183,7 +184,60 @@ class ViTQMRIUNet(nn.Module):
         return output
 
 
-def create_vit_qmri_model(time_steps, n_outputs=3, img_size=192, pretrained=True, device='cuda'):
+# Model configurations for different tiers
+MODEL_CONFIGS = {
+    'tiny': {  # ~15M parameters
+        'embed_dim': 384,
+        'depth': 6,
+        'num_heads': 6,
+        'decoder_features': 256,
+        'description': 'Tiny model for fast inference and limited compute'
+    },
+    'small': {  # ~60M parameters
+        'embed_dim': 512,
+        'depth': 8,
+        'num_heads': 8,
+        'decoder_features': 384,
+        'description': 'Small model for good performance with moderate compute'
+    },
+    'base': {  # ~90M parameters
+        'embed_dim': 768,
+        'depth': 10,
+        'num_heads': 12,
+        'decoder_features': 512,
+        'description': 'Base model for high performance'
+    },
+    'large': {  # ~120M parameters
+        'embed_dim': 768,
+        'depth': 12,
+        'num_heads': 12,
+        'decoder_features': 768,
+        'description': 'Large model for maximum performance'
+    }
+}
+
+
+def create_vit_qmri_model(time_steps, n_outputs=3, img_size=192, model_size='base', pretrained=True, device='cuda'):
+    """
+    Create a ViT-based qMRI model with different size configurations
+
+    Args:
+        time_steps: Number of time points in your sequence
+        n_outputs: Number of output parameter maps (default: 3 for T1, T2, PD)
+        img_size: Input image size (default: 192)
+        model_size: Model size - 'tiny' (~15M), 'small' (~60M), 'base' (~90M), 'large' (~120M)
+        pretrained: Whether to use pretrained ViT weights (only works well with 'base' and 'large')
+        device: 'cuda' or 'cpu'
+
+    Returns:
+        model: The ViT-UNet model
+    """
+
+    if model_size not in MODEL_CONFIGS:
+        raise ValueError(f"model_size must be one of {list(MODEL_CONFIGS.keys())}")
+
+    config = MODEL_CONFIGS[model_size]
+
     # Auto-calculate patch size - prefer larger patches to avoid OOM
     patch_size = 16  # Default
 
@@ -201,10 +255,33 @@ def create_vit_qmri_model(time_steps, n_outputs=3, img_size=192, pretrained=True
                 break
 
     n_patches = (img_size // patch_size) ** 2 * time_steps
+    print(f"Creating {model_size.upper()} model: {config['description']}")
     print(f"Using patch_size={patch_size} for img_size={img_size}")
     print(f"Total patches per sample: {n_patches} ({img_size // patch_size}×{img_size // patch_size}×{time_steps})")
 
-    model = ViTQMRIUNet(img_size, patch_size, time_steps, n_outputs, pretrained)
+    # Warn about pretrained weights for non-base models
+    if pretrained and model_size not in ['base', 'large']:
+        print(f"⚠️  Warning: Pretrained weights may not transfer well to {model_size} model")
+        print("   Consider using pretrained=False for tiny/small models")
+
+    model = ViTQMRIUNet(
+        img_size=img_size,
+        patch_size=patch_size,
+        time_steps=time_steps,
+        n_outputs=n_outputs,
+        embed_dim=config['embed_dim'],
+        depth=config['depth'],
+        num_heads=config['num_heads'],
+        decoder_features=config['decoder_features'],
+        pretrained=pretrained
+    )
+
+    # Display parameter count
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Model parameters: {total_params:,} total, {trainable_params:,} trainable")
+    print(f"Model size: {total_params * 4 / 1024 ** 2:.1f} MB")
+
     return model.to(device)
 
 
@@ -212,17 +289,40 @@ def create_vit_qmri_model(time_steps, n_outputs=3, img_size=192, pretrained=True
 if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Test different sizes
-    for img_size in [36, 64, 128, 192]:
-        print(f"\n=== Testing img_size={img_size} ===")
-        model = create_vit_qmri_model(8, 3, img_size, pretrained=False, device=device)
+    # Test all model sizes
+    model_sizes = ['tiny', 'small', 'base', 'large']
+    img_size = 192
 
-        dummy_input = torch.randn(1, 8, img_size, img_size).to(device)
+    print("=== Model Size Comparison ===")
+    for size in model_sizes:
+        print(f"\n--- {size.upper()} MODEL ---")
+        model = create_vit_qmri_model(
+            time_steps=50,
+            n_outputs=3,
+            img_size=img_size,
+            model_size=size,
+            pretrained=False,  # Disable pretrained for comparison
+            device=device
+        )
+
+        # Test inference
+        dummy_input = torch.randn(1, 50, img_size, img_size).to(device)
         with torch.no_grad():
             output = model(dummy_input)
             print(f"Input: {dummy_input.shape} → Output: {output.shape}")
-            match = "✅" if output.shape[-1] == img_size else "❌"
-            print(f"{match} Size match: {output.shape[-1] == img_size}")
 
         del model
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
+
+    print("\n=== Usage Examples ===")
+    print("# Fast inference on mobile/edge devices")
+    print("model = create_vit_qmri_model(8, 3, 192, model_size='tiny')")
+    print()
+    print("# Balanced performance")
+    print("model = create_vit_qmri_model(8, 3, 192, model_size='small')")
+    print()
+    print("# High performance with pretrained weights")
+    print("model = create_vit_qmri_model(8, 3, 192, model_size='base', pretrained=True)")
+    print()
+    print("# Maximum performance for research")
+    print("model = create_vit_qmri_model(8, 3, 192, model_size='large', pretrained=True)")

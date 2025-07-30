@@ -46,12 +46,13 @@ def create_phantom(Nread, Nphase, phantom_path, num_coils):
         coil_maps[c, :, :, 0] = sens_maps_2d[:, :, c]
 
     # Set the coil maps in the phantom
-    phantom.coil_sens = torch.tensor(coil_maps, dtype=torch.complex64)
+    coil_maps = torch.tensor(coil_maps, dtype=torch.complex64)
+    phantom.coil_sens = coil_maps
 
-    return phantom
+    return phantom, coil_maps
 
 
-def create_phantom_with_custom_parameters(T1_map, T2_map, PD_map, Nread, Nphase, phantom_path, num_coils):
+def create_phantom_with_custom_parameters(T1_map, T2_map, PD_map, Nread, Nphase, phantom_path, coil_maps=None, num_coils=None):
     """
     Create a phantom with a custom T2 map, T2 map and PD map.
     """
@@ -78,24 +79,26 @@ def create_phantom_with_custom_parameters(T1_map, T2_map, PD_map, Nread, Nphase,
     phantom.T2 = T2_map.unsqueeze(-1)
     phantom.PD = PD_map.unsqueeze(-1)
 
-
-    # Create coil sensitivity maps using our sensitivity_maps module
-    resolution = (Nread, Nphase)
-    sens_maps_2d = create_gaussian_sensitivities(resolution[0], num_coils)
-    sens_maps_2d = normalize_sensitivities(sens_maps_2d)
-
-    # Convert to MR0 format: (num_coils, x, y, z)
-    coil_maps = np.zeros((num_coils, resolution[0], resolution[1], 1), dtype=complex)
-    for c in range(num_coils):
-        coil_maps[c, :, :, 0] = sens_maps_2d[:, :, c]
-
     # Set the coil maps in the phantom
-    phantom.coil_sens = torch.tensor(coil_maps, dtype=torch.complex64, device=T1_map.device)
+    if coil_maps is None and num_coils is not None:
+        # Create coil sensitivity maps using our sensitivity_maps module
+        resolution = (Nread, Nphase)
+        sens_maps_2d = create_gaussian_sensitivities(resolution[0], num_coils)
+        sens_maps_2d = normalize_sensitivities(sens_maps_2d)
+
+        # Convert to MR0 format: (num_coils, x, y, z)
+        coil_maps = np.zeros((num_coils, resolution[0], resolution[1], 1), dtype=complex)
+        for c in range(num_coils):
+            coil_maps[c, :, :, 0] = sens_maps_2d[:, :, c]
+
+        # Set the coil maps in the phantom
+        coil_maps = torch.tensor(coil_maps, dtype=torch.complex64)
+    elif coil_maps is None and num_coils is None:
+        raise AttributeError('No coil maps provided or number of coils not specified')
+
+    phantom.coil_sens = coil_maps
 
     return phantom
-
-
-
 
 
 def create_phantom_with_custom_params(T1_map, T2_map, PD_map, Nread=32, Nphase=32):
