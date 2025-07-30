@@ -13,10 +13,65 @@ from simulate_and_process import simulate_and_process_mri
 from plotting_utils import *
 import os
 
+
+def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
+                          t1_pred, t2_pred, pd_pred, real_batch, sim_batch, plots_path):
+    """Short plotting function for training visualization."""
+
+    # Main plot
+    fig, axes = plt.subplots(4, 4, figsize=(20, 16))
+
+    # Maps (rows 1-2)
+    maps = [(T1_gt, t1_pred, 'T1'), (T2_gt, t2_pred, 'T2'), (PD_gt, pd_pred, 'PD')]
+    for i, (gt, pred, name) in enumerate(maps):
+        gt_np, pred_np = gt.cpu().numpy(), pred.detach().cpu().numpy()
+        vmin, vmax = min(gt_np.min(), pred_np.min()), max(gt_np.max(), pred_np.max())
+
+        axes[0, i].imshow(gt_np, cmap='viridis', vmin=vmin, vmax=vmax)
+        axes[0, i].set_title(f'GT {name}')
+        axes[0, i].axis('off')
+
+        axes[1, i].imshow(pred_np, cmap='viridis', vmin=vmin, vmax=vmax)
+        axes[1, i].set_title(f'Pred {name}')
+        axes[1, i].axis('off')
+
+    # Images (rows 3-4)
+    real_imgs = real_batch.squeeze().detach().cpu().numpy()
+    sim_imgs = sim_batch.squeeze().detach().cpu().numpy()
+    vmin, vmax = min(real_imgs.min(), sim_imgs.min()), max(real_imgs.max(), sim_imgs.max())
+
+    for t in range(4):
+        axes[2, t].imshow(real_imgs[t * 5], cmap='gray', vmin=vmin, vmax=vmax)
+        axes[2, t].set_title(f'Real t={t}')
+        axes[2, t].axis('off')
+
+        axes[3, t].imshow(sim_imgs[t * 5], cmap='gray', vmin=vmin, vmax=vmax)
+        axes[3, t].set_title(f'Sim t={t}')
+        axes[3, t].axis('off')
+
+    # Hide unused subplots
+    axes[0, 3].axis('off')
+    axes[1, 3].axis('off')
+
+    plt.tight_layout()
+    os.makedirs(f"{plots_path}/iterations", exist_ok=True)
+    plt.savefig(f"{plots_path}/iterations/iter_{iteration:04d}.png", dpi=150)
+    plt.close()
+
+    # Loss plot
+    plt.figure(figsize=(8, 5))
+    plt.semilogy(losses)
+    plt.title(f'Loss (Iter {iteration + 1}/{epochs}): {losses[-1]:.2e}')
+    plt.xlabel('Iteration')
+    plt.ylabel('Loss')
+    plt.grid(True, alpha=0.3)
+    plt.savefig(f"{plots_path}/loss_curve.png", dpi=150)
+    plt.close()
+
 # ===== SETUP PARAMETERS =====
 seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_36\epi_gre_mrf_epi.seq"
 phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_36\run_5"
+output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_36\run_8"
 
 epochs = 150
 
@@ -43,6 +98,14 @@ coil_maps = coil_maps.to("cuda")
 T1_ground_truth = phantom.T1  # ground truth
 T2_ground_truth = phantom.T2  # ground truth
 PD_ground_truth = phantom.PD  # ground truth
+
+t1_mean = torch.mean(T1_ground_truth)
+t1_std = torch.std(T1_ground_truth)
+t2_mean = torch.mean(T2_ground_truth)
+t2_std = torch.std(T2_ground_truth)
+pd_mean = torch.mean(PD_ground_truth)
+pd_std = torch.std(PD_ground_truth)
+
 obj_p = phantom.build()  # phantom for simulation
 
 # ===== INITIAL SIMULATION DATA =====
@@ -59,23 +122,36 @@ if plot:
 
 # ===== DEFINE NETWORK =====
 from unet_3d_pre_trained import create_vit_qmri_model
+from conv_unet import create_3d_unet_mri
 
-
-model = create_vit_qmri_model(
-    time_steps=len(time_series_shots),
-    n_outputs=3,
-    img_size=Nx,
-    model_size="base",
-    pretrained=True,  # Disable pretrained for comparison
-    device='cuda'
+model = create_3d_unet_mri(
+    time_steps=len(time_series_shots),  # Your time dimension
+    input_shape=(Nx, Nx),  # Your spatial dimensions
+    out_channels=3,  # T1, T2, PD outputs
+    model_size="large"  # Options: "tiny", "small", "medium", "large", "huge"
 )
+
+model = model.to("cuda")
 # ===== OPTIMIZATION SETUP =====
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.99)
 losses = []
 
+# ===== normelize images ========
+reshaped = time_series_shots.view(50, -1)  # [50, 1296]
+
+# Calculate mean and std along the spatial dimensions (dim=1)
+mean = reshaped.mean(dim=1, keepdim=True)  # [50, 1]
+std = reshaped.std(dim=1, keepdim=True)  # [50, 1]
+
+# Normalize
+normalized_reshaped = (reshaped - mean) / (std + 1e-8)  # Add small epsilon to avoid div by zero
+
+# Reshape back to original dimensions
+time_series_shots_normalized = normalized_reshaped.view(50, 36, 36)
+
 # ===== ADD BATCH DIMENSION =====
-real_images_batch = time_series_shots.unsqueeze(0)  # shape: [1, n_TI, H, W]
+time_series_shots_normalized = time_series_shots_normalized.unsqueeze(0)  # shape: [1, n_TI, H, W]
 
 # ===== MAIN TRAINING LOOP =====
 print("Starting training...")
@@ -85,11 +161,16 @@ for iteration in range(epochs):
     optimizer.zero_grad()
 
     # Forward
-    parameters_heat_map_predictions = model(real_images_batch)
+    parameters_heat_map_predictions = model(time_series_shots_normalized)
 
-    t1_predicted = parameters_heat_map_predictions.squeeze()[0]  # .detach().requires_grad_()
-    t2_predicted = parameters_heat_map_predictions.squeeze()[1]  # .detach().requires_grad_()
-    pd_predicted = parameters_heat_map_predictions.squeeze()[2]  # .detach().requires_grad_()
+    t1_predicted = parameters_heat_map_predictions.squeeze()[0]
+    t2_predicted = parameters_heat_map_predictions.squeeze()[1]
+    pd_predicted = parameters_heat_map_predictions.squeeze()[2]
+
+    # denormalizing for mri simulator
+    t1_predicted = t1_predicted * t1_std + t1_mean
+    t2_predicted = t2_predicted * t2_std + t2_mean
+    pd_predicted = pd_predicted * pd_std + pd_mean
 
     t1_predicted = t1_predicted * mask.float()
     t2_predicted = t2_predicted * mask.float()
@@ -108,11 +189,13 @@ for iteration in range(epochs):
 
     obj_p_pred = obj_p_pred.build()
     # Simulate images with predicted T1
-    sim_calibration_img_sos, sim_images, _ = simulate_and_process_mri(obj_p_pred, seq_path, num_coils, grappa_weights_torch=grappa_weights_torch)
+    sim_calibration_img_sos, sim_images, _ = simulate_and_process_mri(obj_p_pred, seq_path, num_coils,
+                                                                      grappa_weights_torch=grappa_weights_torch)
     sim_images_batch = sim_images.unsqueeze(0)
 
+
     # Compute loss
-    image_loss = F.mse_loss(real_images_batch, sim_images_batch)
+    image_loss = F.mse_loss(time_series_shots, sim_images_batch)
 
     # Backward
     image_loss.backward()
@@ -127,54 +210,10 @@ for iteration in range(epochs):
     print(f"Iteration {iteration}: Loss = {image_loss.item():.8f}")
 
     if iteration % 3 == 0:
+        plot_training_results(iteration, epochs, losses, T1_ground_truth, T2_ground_truth, PD_ground_truth,
+                              t1_predicted, t2_predicted, pd_predicted, time_series_shots, sim_images_batch, plots_output_path)
 
-        fig = plt.figure(figsize=(24, 20))
 
-        # Prepare data & vmin/vmax
-        maps = {
-            'T1': (T1_ground_truth, t1_predicted),
-            'T2': (T2_ground_truth, t2_predicted),
-            'PD': (PD_ground_truth, pd_predicted)
-        }
-        real_imgs = real_images_batch.squeeze().detach().cpu().numpy()
-        sim_imgs = sim_images_batch.squeeze().detach().cpu().numpy()
-        img_vmin, img_vmax = real_imgs.min(), real_imgs.max()
-        img_vmin = min(img_vmin, sim_imgs.min())
-        img_vmax = max(img_vmax, sim_imgs.max())
-
-        # === Rows 1 & 2: GT and predicted maps ===
-        for idx, (name, (gt, pred)) in enumerate(maps.items()):
-            gt_np, pred_np = gt.squeeze().cpu().numpy(), pred.squeeze().detach().cpu().numpy()
-            vmin, vmax = min(gt_np.min(), pred_np.min()), max(gt_np.max(), pred_np.max())
-
-            for row, data, title in [(1, gt_np, f'Ground Truth {name}'),
-                                     (2, pred_np, f'Predicted {name} (Iter {iteration})')]:
-                ax = plt.subplot(4, 4, (row - 1) * 4 + idx + 1)
-                im = ax.imshow(data, cmap='viridis', vmin=vmin, vmax=vmax)
-                ax.set_title(title)
-                ax.axis('off')
-                plt.colorbar(im, ax=ax)
-
-        # Fill empty cells in cols 4
-        for row in [1, 2]:
-            ax = plt.subplot(4, 4, row * 4)
-            ax.axis('off')
-
-        # === Rows 3 & 4: time series images ===
-        for t in range(min(time_steps_number, 4)):
-            for row, imgs, label in [(3, real_imgs, 'Real'), (4, sim_imgs, 'Sim')]:
-                ax = plt.subplot(4, 4, (row - 1) * 4 + t + 1)
-                im = ax.imshow(imgs[t], cmap='gray', vmin=img_vmin, vmax=img_vmax)
-                ax.set_title(f'{label} Image t={t}')
-                ax.axis('off')
-                plt.colorbar(im, ax=ax)
-
-        plt.tight_layout()
-        os.makedirs(os.path.join(plots_output_path, "iterations"), exist_ok=True)
-        plot_path = os.path.join(plots_output_path, "iterations", f'iteration_{iteration:04d}.png')
-        plt.savefig(plot_path)
-        plt.close()
-        print(f"Saved iteration plot to {plot_path}")
 
     # Early stopping
     if image_loss.item() < 1e-7:
@@ -187,17 +226,8 @@ print(f"Training complete! Total time: {total_time:.2f} seconds")
 print(f"Final loss: {losses[-1]:.8f}")
 
 # ===== PLOT & SAVE LOSS CURVE =====
-plt.figure(figsize=(10, 6))
-plt.semilogy(losses)
-plt.title('Training Loss vs Iteration')
-plt.xlabel('Iteration')
-plt.ylabel('MSE Loss (Log Scale)')
-plt.grid(True)
-plt.tight_layout()
-loss_curve_path = os.path.join(plots_output_path, 'training_loss_curve.png')
-plt.savefig(loss_curve_path)
-plt.close()
-print(f"Loss curve saved to {loss_curve_path}")
+plot_training_results(iteration, epochs, losses, T1_ground_truth, T2_ground_truth, PD_ground_truth,
+                              t1_predicted, t2_predicted, pd_predicted, time_series_shots, sim_images_batch, plots_output_path)
 
 # ===== SAVE MODEL =====
 model_save_path = os.path.join(models_output_path, 'best_t1_t2_pd_mapping_model.pth')

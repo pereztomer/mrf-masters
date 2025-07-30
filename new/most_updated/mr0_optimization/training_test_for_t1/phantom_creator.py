@@ -24,7 +24,7 @@ def create_phantom(Nread=32, Nphase=32):
     sz = [Nread, Nphase]
 
     # Load a phantom object from file
-    phantom = mr0.VoxelGridPhantom.load_mat('numerical_brain_cropped.mat')
+    phantom = mr0.VoxelGridPhantom.load_mat(r"C:\Users\perez\PycharmProjects\mrf-masters\new\most_updated\numerical_brain_cropped.mat")
     phantom = phantom.interpolate(sz[0], sz[1], 1)
 
     # Manipulate properties
@@ -97,7 +97,7 @@ def create_phantom_with_custom_T1(T1_map, Nread=32, Nphase=32):
     sz = [Nread, Nphase]
 
     # Load a phantom object from file
-    phantom = mr0.VoxelGridPhantom.load_mat('numerical_brain_cropped.mat')
+    phantom = mr0.VoxelGridPhantom.load_mat(r"C:\Users\perez\PycharmProjects\mrf-masters\new\most_updated\numerical_brain_cropped.mat")
     phantom = phantom.interpolate(sz[0], sz[1], 1)
 
     # Manipulate properties

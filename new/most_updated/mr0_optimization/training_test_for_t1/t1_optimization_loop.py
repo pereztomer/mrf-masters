@@ -168,6 +168,38 @@ from t1_resnet_network import T1MappingNet
 # Create the neural network
 T1_net = T1MappingNet(input_channels=n_TI, output_channels=1)
 
+import sys
+
+
+def analyze_model_parameters(model):
+    total_params = 0
+    trainable_params = 0
+
+    print("Layer-wise parameter count:")
+    print("-" * 50)
+
+    for name, param in model.named_parameters():
+        param_count = param.numel()
+        total_params += param_count
+        if param.requires_grad:
+            trainable_params += param_count
+
+        print(f"{name}: {param_count:,} parameters, shape: {list(param.shape)}")
+
+    print("-" * 50)
+    print(f"Total parameters: {total_params:,} ({total_params / 1e6:.2f}M)")
+    print(f"Trainable parameters: {trainable_params:,} ({trainable_params / 1e6:.2f}M)")
+
+    return total_params, trainable_params
+
+
+# Run the analysis
+total_params, trainable_params = analyze_model_parameters(T1_net)
+
+
+print(f"total_params: {total_params:.2f},trainable_params: {trainable_params}")
+exit()
+
 # For tracking progress
 losses = []
 
