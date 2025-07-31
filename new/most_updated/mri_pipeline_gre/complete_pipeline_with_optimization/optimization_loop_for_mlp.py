@@ -210,7 +210,7 @@ for iteration in range(epochs):
         optimizer.zero_grad()
 
         # Forward
-        parameters_heat_map_predictions = model(time_series_shots_normalized)
+        parameters_heat_map_predictions = model(batch_data)
 
         t1_predicted = parameters_heat_map_predictions.squeeze()[0]
         t2_predicted = parameters_heat_map_predictions.squeeze()[1]
