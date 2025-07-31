@@ -45,7 +45,8 @@ def create_simple_mlp(input_features, output_features, model_size="medium"):
         "small": {"hidden_layers": [128, 128]},
         "medium": {"hidden_layers": [128, 256, 128]},
         "large": {"hidden_layers": [256, 512, 256]},
-        "huge": {"hidden_layers": [512, 1024, 512, 256]}
+        "huge": {"hidden_layers": [512, 1024, 512, 256]},
+        "huge+": {"hidden_layers": [256, 512, 1024, 2048, 512, 256]}
     }
 
     if model_size not in configs:

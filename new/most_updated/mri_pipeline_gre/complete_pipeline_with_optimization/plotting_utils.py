@@ -146,26 +146,34 @@ def display_coil_images(shots, k_coils=4, save_path=None):
         plt.show()
 
 
-def display_time_series_shots(time_series_shots, flip_angles, grid_size=(5,10), save_path=None):
+def display_time_series_shots(time_series_shots, flip_angles, grid_size=(5, 10), save_path=None):
     rows, cols = grid_size
     max_shots = rows * cols
     num_shots = min(len(time_series_shots), max_shots)
-
     img_min = min(img.min() for img in time_series_shots)
     img_max = max(img.max() for img in time_series_shots)
 
     fig, axes = plt.subplots(rows, cols, figsize=(2 * cols, 2 * rows))
+
     for i in range(num_shots):
         row, col = i // cols, i % cols
-        axes[row, col].imshow(time_series_shots[i].detach().cpu(), cmap='gray', vmin=img_min, vmax=img_max)
-        axes[row, col].set_title(f'TS{i+1} FA={flip_angles[i]}°', fontsize=10)
+        img = time_series_shots[i].detach().cpu()
+
+        # Calculate quantiles
+        q1 = torch.quantile(img, 0.01).item()
+        q99 = torch.quantile(img, 0.99).item()
+
+        axes[row, col].imshow(img, cmap='gray', vmin=img_min, vmax=img_max)
+        axes[row, col].set_title(f'TS{i + 1} FA={flip_angles[i]}°\n1%:{q1:.1f} 99%:{q99:.1f}', fontsize=9)
         axes[row, col].axis('off')
+
     for i in range(num_shots, rows * cols):
         row, col = i // cols, i % cols
         axes[row, col].axis('off')
 
     plt.suptitle(f'MRF Time Series: {num_shots} time points', fontsize=16)
     plt.tight_layout()
+
     if save_path:
         plt.savefig(save_path)
         plt.close()
