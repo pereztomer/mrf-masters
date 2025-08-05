@@ -1,4 +1,4 @@
-# main_training.py
+# main_training.py - Complete Multi-GPU Version
 
 import torch
 import torch.nn as nn
@@ -37,8 +37,10 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
         axes[1, i].set_title(f'Pred {name}')
         axes[1, i].axis('off')
 
-        # Single colorbar for both GT and Pred (shared scale)
-        plt.colorbar(im1, ax=[axes[0, i], axes[1, i]], fraction=0.046, pad=0.04)
+        # Create colorbar between the two axes
+        divider = make_axes_locatable(axes[1, i])
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        plt.colorbar(im1, cax=cax)
 
     # Images (rows 3-4) with shared colorbars
     real_imgs = real_batch.squeeze().detach().cpu().numpy()
@@ -108,15 +110,128 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
     plt.close()
 
 
-# ===== SETUP PARAMETERS =====
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_72\epi_gre_mrf_epi.seq"
-phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_72\run_6"
+class SimpleMultiGPU:
+    def __init__(self, base_model, num_splits):
+        self.base_model = base_model
+        self.num_splits = num_splits
 
-# seq_path = "/home/tomer.perez/workspace/runs/gre_epi_108/epi_gre_mrf_epi.seq"
-# phantom_path = "/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
-# output_path = "/home/tomer.perez/workspace/runs/gre_epi_108"
-epochs = 1000
+        # Check GPU availability
+        available_gpus = torch.cuda.device_count()
+        print(f"Available GPUs: {available_gpus}")
+
+        # Validate configuration
+        if num_splits not in [2, 4]:
+            print(f"ERROR: num_splits must be 2 or 4, got {num_splits}")
+            exit(1)
+
+        if available_gpus < num_splits:
+            print(f"ERROR: Need {num_splits} GPUs but only {available_gpus} available")
+            exit(1)
+
+        self.devices = [f"cuda:{i}" for i in range(num_splits)]
+
+        # Create model copies on different GPUs
+        self.models = []
+        for device in self.devices:
+            model_copy = type(base_model)(
+                input_features=base_model.input_features if hasattr(base_model, 'input_features') else 50,
+                output_features=base_model.output_features if hasattr(base_model, 'output_features') else 3,
+                model_size="small"
+            ).to(device)
+            model_copy.load_state_dict(base_model.state_dict())
+            self.models.append(model_copy)
+
+        print(f"Successfully created {len(self.models)} model copies on devices: {self.devices}")
+
+    def split_pixels(self, pixel_time_series):
+        """Split pixels into halves or quarters"""
+        total_pixels = pixel_time_series.shape[0]
+
+        splits = []
+        if self.num_splits == 2:
+            # Split into halves
+            mid = total_pixels // 2
+
+            # First half
+            split1 = pixel_time_series[:mid].to(self.devices[0])
+            splits.append((split1, 0, mid, self.devices[0]))
+
+            # Second half
+            split2 = pixel_time_series[mid:].to(self.devices[1])
+            splits.append((split2, mid, total_pixels, self.devices[1]))
+
+        elif self.num_splits == 4:
+            # Split into quarters
+            quarter = total_pixels // 4
+
+            # First quarter
+            split1 = pixel_time_series[:quarter].to(self.devices[0])
+            splits.append((split1, 0, quarter, self.devices[0]))
+
+            # Second quarter
+            split2 = pixel_time_series[quarter:2 * quarter].to(self.devices[1])
+            splits.append((split2, quarter, 2 * quarter, self.devices[1]))
+
+            # Third quarter
+            split3 = pixel_time_series[2 * quarter:3 * quarter].to(self.devices[2])
+            splits.append((split3, 2 * quarter, 3 * quarter, self.devices[2]))
+
+            # Fourth quarter (handles remainder)
+            split4 = pixel_time_series[3 * quarter:].to(self.devices[3])
+            splits.append((split4, 3 * quarter, total_pixels, self.devices[3]))
+
+        print(f"Split {total_pixels} pixels into {len(splits)} parts:")
+        for i, (_, start, end, device) in enumerate(splits):
+            print(f"  Part {i}: pixels {start}-{end} ({end - start} pixels) on {device}")
+
+        return splits
+
+    def forward(self, pixel_time_series):
+        """Forward pass with manual GPU splitting"""
+        # Split data across GPUs
+        splits = self.split_pixels(pixel_time_series)
+
+        results = []
+        # Process each split on its GPU
+        for i, (split_data, start_idx, end_idx, device) in enumerate(splits):
+            with torch.cuda.device(device):
+                pred = self.models[i](split_data)
+                results.append((pred, start_idx, end_idx))
+
+        # Combine results back on main GPU
+        total_pixels = pixel_time_series.shape[0]
+        full_predictions = torch.zeros(total_pixels, 3, device="cuda:0")
+
+        for pred, start_idx, end_idx in results:
+            full_predictions[start_idx:end_idx] = pred.to("cuda:0")
+
+        return full_predictions
+
+    def parameters(self):
+        """Return parameters from all models for optimizer"""
+        params = []
+        for model in self.models:
+            params.extend(list(model.parameters()))
+        return params
+
+
+def print_gpu_memory_usage():
+    """Print current GPU memory usage for all devices"""
+    for i in range(torch.cuda.device_count()):
+        allocated = torch.cuda.memory_allocated(i) / 1024 ** 3  # GB
+        cached = torch.cuda.memory_reserved(i) / 1024 ** 3  # GB
+        print(f"GPU {i}: {allocated:.2f}GB allocated, {cached:.2f}GB cached")
+
+
+# ===== MULTI-GPU CONFIGURATION =====
+num_splits = 2  # Change to 2 or 4 based on your GPU count
+
+# ===== SETUP PARAMETERS =====
+seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_108\epi_gre_mrf_epi.seq"
+phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\numerical_brain_cropped.mat"
+output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_108\run_1"
+
+epochs = 500
 
 # ===== CREATE OUTPUT FOLDERS =====
 plots_output_path = os.path.join(output_path, 'plots')
@@ -145,14 +260,11 @@ obj_p = phantom.build()
 calibration_data, time_series_shots, grappa_weights_torch = simulate_and_process_mri(obj_p, seq_path, num_coils)
 grappa_weights_torch = grappa_weights_torch.detach()
 
-
-
 T1_ground_truth = phantom.T1.squeeze().to("cuda")
 T2_ground_truth = phantom.T2.squeeze().to("cuda")
 PD_ground_truth = phantom.PD.squeeze().to("cuda")
 
 # ===== CREATE MASK AND GROUND TRUTH =====
-# mask = calibration_data > 150
 mask = T1_ground_truth > 0
 mask = mask.to("cuda")
 
@@ -177,62 +289,7 @@ stds = torch.std(masked_reshaped, dim=1, keepdim=True)
 normalized_time_series = (masked_reshaped - means) / (stds + 1e-8)
 
 # Transpose to get (num_pixels, time_steps) format
-pixel_time_series = normalized_time_series.transpose(0, 1).to("cuda")  # Shape: (665, 50)
-
-# import matplotlib.pyplot as plt
-# from matplotlib.widgets import Slider
-#
-#
-# # Interactive plot function
-# def interactive_mask_plot():
-#     gt_mask = T1_ground_truth > 0
-#
-#     fig, axes = plt.subplots(3, 3, figsize=(18, 12))
-#     plt.subplots_adjust(bottom=0.15)
-#
-#     # Add slider
-#     ax_slider = plt.axes([0.2, 0.02, 0.5, 0.03])
-#     slider = Slider(ax_slider, 'Threshold', 1, 200, valinit=100, valfmt='%d')
-#
-#     def update(val):
-#         threshold = slider.val
-#         current_mask = calibration_data > threshold
-#         missing = gt_mask.cpu() & ~current_mask.cpu()
-#
-#         # Clear and redraw
-#         for ax in axes.flat:
-#             ax.clear()
-#
-#         # Row 1: Masks
-#         axes[0, 0].imshow(current_mask.cpu(), cmap='gray');
-#         axes[0, 0].set_title('Current Mask')
-#         axes[0, 1].imshow(gt_mask.cpu(), cmap='gray');
-#         axes[0, 1].set_title('GT T1 Mask')
-#         axes[0, 2].imshow(missing, cmap='gray');
-#         axes[0, 2].set_title('Missing Pixels')
-#
-#         # Row 2: Data with masks
-#         axes[1, 0].imshow((calibration_data.cpu() * current_mask.cpu()), cmap='gray');
-#         axes[1, 0].set_title('Calib × Mask')
-#         axes[1, 1].imshow((T1_ground_truth.cpu() * gt_mask.cpu()), cmap='viridis');
-#         axes[1, 1].set_title('T1 × GT Mask')
-#         axes[1, 2].axis('off')
-#
-#         # Row 3: Raw data
-#         axes[2, 0].imshow(calibration_data.cpu(), cmap='gray');
-#         axes[2, 0].set_title('Raw Calib')
-#         axes[2, 1].imshow(T1_ground_truth.cpu(), cmap='viridis');
-#         axes[2, 1].set_title('Raw T1')
-#         axes[2, 2].axis('off')
-#
-#         plt.draw()
-#
-#     slider.on_changed(update)
-#     update(100)
-#     plt.show()
-#
-#
-# interactive_mask_plot()
+pixel_time_series = normalized_time_series.transpose(0, 1).to("cuda")  # Shape: (num_masked_pixels, time_steps)
 
 # Get spatial indices for reconstruction
 masked_indices = torch.where(mask)
@@ -247,41 +304,34 @@ if plot:
 # ===== DEFINE NETWORK =====
 from mlp import create_simple_mlp
 
-model = create_simple_mlp(
-    input_features=time_steps_number,  # 50 time steps
+base_model = create_simple_mlp(
+    input_features=time_steps_number,  # time steps
     output_features=3,  # T1, T2, PD
-    model_size="huge"
+    model_size="small"  # Can try larger sizes now with multi-GPU
 )
-model = model.to("cuda")
+base_model = base_model.to("cuda")
+
+# Setup multi-GPU (simplified approach)
+multi_gpu_model = SimpleMultiGPU(base_model, num_splits)
 
 # ===== OPTIMIZATION SETUP =====
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.99)
-
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.01)  # Higher LR
-# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)  # Less aggressive
-
-optimizer = torch.optim.Adam(
-    model.parameters(),
-    lr=0.0005,           # Lower LR
-    weight_decay=1e-4    # Add regularization for larger models
-)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
-
-
+optimizer = torch.optim.Adam(multi_gpu_model.parameters(), lr=0.001)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.99)
 losses = []
 
-
+# Print initial memory usage
+print("=== Initial Memory Usage ===")
+print_gpu_memory_usage()
 
 # ===== MAIN TRAINING LOOP =====
-print("Starting training...")
+print("Starting multi-GPU training...")
 start_time = time.time()
 
 for iteration in range(epochs):
     optimizer.zero_grad()
 
-    # Forward pass: all pixels at once
-    predictions = model(pixel_time_series)  # Shape: (665, 3)
+    # Forward pass: split pixels across GPUs manually
+    predictions = multi_gpu_model.forward(pixel_time_series)  # Shape: (num_masked_pixels, 3)
 
     # Reconstruct spatial maps
     t1_predicted = torch.zeros_like(T1_ground_truth).to("cuda")
@@ -321,9 +371,6 @@ for iteration in range(epochs):
     )
     sim_images_batch = sim_images.unsqueeze(0)
 
-    # Calculate masked loss (only for brain regions)
-    mask_expanded = mask.unsqueeze(0).expand_as(time_series_shots)  # Shape: (50, 36, 36)
-
     # Calculate normalized loss using quantiles
     relative_loss = 0
     for t in range(len(time_series_shots)):
@@ -334,7 +381,7 @@ for iteration in range(epochs):
         # Calculate 1% and 99% quantiles for normalization (only on masked pixels)
         q1 = torch.quantile(real_t, 0.01)
         q99 = torch.quantile(real_t, 0.99)
-        signal_range = q99 - q1
+        signal_range = q99 - q1 + 1e-8
 
         # Normalize both real and simulated to [0,1] range
         real_normalized = torch.clamp((real_t - q1) / signal_range, 0, 1)
@@ -348,7 +395,6 @@ for iteration in range(epochs):
     per_pixel_loss = relative_loss / len(time_series_shots)
     image_loss = per_pixel_loss
 
-
     # Backward pass
     image_loss.backward()
     optimizer.step()
@@ -359,6 +405,10 @@ for iteration in range(epochs):
 
     # Progress
     print(f"Iteration {iteration}: Loss = {image_loss.item():.8f}")
+
+    # Print memory usage periodically
+    if iteration % 10 == 0:
+        print_gpu_memory_usage()
 
     # Plot results
     if iteration % 3 == 0:
@@ -375,6 +425,10 @@ for iteration in range(epochs):
 total_time = time.time() - start_time
 print(f"Training complete! Total time: {total_time:.2f} seconds")
 print(f"Final loss: {losses[-1]:.8f}")
+
+# Print final memory usage
+print("=== Final Memory Usage ===")
+print_gpu_memory_usage()
 
 # ===== PLOT & SAVE LOSS CURVE =====
 plot_training_results(iteration, epochs, losses, T1_ground_truth, T2_ground_truth, PD_ground_truth,
