@@ -109,11 +109,11 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
 
 
 # ===== SETUP PARAMETERS =====
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_72\epi_gre_mrf_epi.seq"
+seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_108\epi_gre_mrf_epi.seq"
 phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_72\run_6"
+output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_108\run_14"
 
-# seq_path = "/home/tomer.perez/workspace/runs/gre_epi_108/epi_gre_mrf_epi.seq"
+# seq_path = "/home/tomer.perez/workspace/runs/gre_epi_108/epi_gre_mrf_epi.seq"s
 # phantom_path = "/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
 # output_path = "/home/tomer.perez/workspace/runs/gre_epi_108"
 epochs = 1000
@@ -144,7 +144,6 @@ obj_p = phantom.build()
 # ===== INITIAL SIMULATION DATA =====
 calibration_data, time_series_shots, grappa_weights_torch = simulate_and_process_mri(obj_p, seq_path, num_coils)
 grappa_weights_torch = grappa_weights_torch.detach()
-
 
 
 T1_ground_truth = phantom.T1.squeeze().to("cuda")
@@ -241,16 +240,66 @@ masked_cols = masked_indices[1]
 
 if plot:
     plot_phantom(phantom, save_path=os.path.join(plots_output_path, 'phantom.png'))
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import os
+
+    # Min/max for consistent grayscale scaling
+    img_min = min(img.min() for img in time_series_shots)
+    img_max = max(img.max() for img in time_series_shots)
+
+    # Convert to numpy
+    calib_img = calibration_data.squeeze().numpy()
+    time_img = time_series_shots[0].detach().cpu().squeeze().numpy()
+    diff_img = calib_img - time_img
+
+    # Avoid divide-by-zero: add small epsilon where calib_img == 0
+    epsilon = 1e-8
+    norm_diff_img = diff_img / (calib_img + epsilon)
+
+    # Create subplot with 4 images
+    fig, axes = plt.subplots(1, 4, figsize=(24, 6))
+
+    # Calibration data
+    im1 = axes[0].imshow(calib_img, cmap='gray', vmin=img_min, vmax=img_max)
+    axes[0].set_title('Calibration Data')
+    axes[0].axis('off')
+    plt.colorbar(im1, ax=axes[0], fraction=0.046, pad=0.04)
+
+    # Time series first shot
+    im2 = axes[1].imshow(time_img, cmap='gray', vmin=img_min, vmax=img_max)
+    axes[1].set_title('Time Series Shot [0]')
+    axes[1].axis('off')
+    plt.colorbar(im2, ax=axes[1], fraction=0.046, pad=0.04)
+
+    # Absolute difference
+    im3 = axes[2].imshow(diff_img, cmap='RdBu_r')
+    axes[2].set_title('Difference (Calib - Time[0])')
+    axes[2].axis('off')
+    plt.colorbar(im3, ax=axes[2], fraction=0.046, pad=0.04)
+
+    # Normalized difference
+    im4 = axes[3].imshow(norm_diff_img, cmap='RdBu_r')
+    axes[3].set_title('Normalized Diff ((Calib - Time[0]) / Calib)')
+    axes[3].axis('off')
+    plt.colorbar(im4, ax=axes[3], fraction=0.046, pad=0.04)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_output_path, 'calibration5.png'), dpi=150, bbox_inches='tight')
+
+
+
     display_time_series_shots(time_series_shots, flip_angles,
                               save_path=os.path.join(plots_output_path, 'time_series_shots.png'))
 
+exit()
 # ===== DEFINE NETWORK =====
 from mlp import create_simple_mlp
 
 model = create_simple_mlp(
     input_features=time_steps_number,  # 50 time steps
     output_features=3,  # T1, T2, PD
-    model_size="huge"
+    model_size="huge+"
 )
 model = model.to("cuda")
 
@@ -270,7 +319,6 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, 
 
 
 losses = []
-
 
 
 # ===== MAIN TRAINING LOOP =====
@@ -303,16 +351,17 @@ for iteration in range(epochs):
     t2_predicted = t2_predicted * mask.float()
     pd_predicted = pd_predicted * mask.float()
 
-    # Create phantom and simulate
+    # # Create phantom and simulate
     obj_p_pred = phantom_creator.create_phantom_with_custom_parameters(
-        T1_map=t1_predicted,
+        T1_map=T1_ground_truth,
         T2_map=t2_predicted,
-        PD_map=pd_predicted,
+        PD_map=PD_ground_truth,
         Nread=Nx,
         Nphase=Ny,
         phantom_path=phantom_path,
         coil_maps=coil_maps
     )
+
     obj_p_pred = obj_p_pred.build()
 
     # Simulate images
@@ -331,29 +380,33 @@ for iteration in range(epochs):
         real_t = time_series_shots[t][mask]  # Shape: (num_masked_pixels,)
         sim_t = sim_images_batch.squeeze()[t][mask]  # Shape: (num_masked_pixels,)
 
-        # Calculate 1% and 99% quantiles for normalization (only on masked pixels)
-        q1 = torch.quantile(real_t, 0.01)
-        q99 = torch.quantile(real_t, 0.99)
-        signal_range = q99 - q1
+        mse_loss = F.mse_loss(real_t, sim_t)
+        mean = torch.mean(real_t)
 
-        # Normalize both real and simulated to [0,1] range
-        real_normalized = torch.clamp((real_t - q1) / signal_range, 0, 1)
-        sim_normalized = torch.clamp((sim_t - q1) / signal_range, 0, 1)
 
-        # Calculate MSE on normalized data
-        single_image_loss = F.mse_loss(real_normalized, sim_normalized)
-        relative_loss += single_image_loss
+        relative_loss += mse_loss/mean
 
     # Average across time points
     per_pixel_loss = relative_loss / len(time_series_shots)
     image_loss = per_pixel_loss
 
 
+    def check_gradients(model, loss):
+        print(f"Loss requires grad: {loss.requires_grad}")
+        for name, param in model.named_parameters():
+            if param.grad is not None:
+                grad_norm = param.grad.norm().item()
+                print(f"{name}: grad_norm = {grad_norm:.8f}")
+            else:
+                print(f"{name}: NO GRADIENT!")
+
+
     # Backward pass
     image_loss.backward()
+    # check_gradients(model, image_loss)
+
     optimizer.step()
     scheduler.step()
-
     # Track loss
     losses.append(image_loss.item())
 

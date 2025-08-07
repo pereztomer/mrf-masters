@@ -152,6 +152,8 @@ def mrf_epi_sequence():
         if tr_delay > 0:
             seq.add_block(pp.make_delay(tr_delay))
 
+        seq.add_block(pp.make_delay(20))
+
     phase1_duration = seq.duration()[0]
     # Delay between phases
     seq.add_block(pp.make_delay(3.0))

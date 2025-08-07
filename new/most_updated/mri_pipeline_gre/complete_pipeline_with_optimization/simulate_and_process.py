@@ -6,7 +6,7 @@ import eqdist_grappa_cuda
 import numpy as np
 
 
-def preprocess_raw_data(seq, signal, R, Nread, Nphase_in_practice, fourier_factor, time_steps, num_coils, grappa_weights_torch=None):
+def preprocess_raw_data(seq, signal, R, Nread, Nphase_in_practice, fourier_factor, time_steps, num_coils, grappa_weights_torch=None, grappa_regularization_factor=0.001):
     kspace_frequencies = torch.Tensor(seq.calculate_kspace()[0])
     shots = []
     x_freq_per_shot = []
@@ -78,7 +78,6 @@ def preprocess_raw_data(seq, signal, R, Nread, Nphase_in_practice, fourier_facto
 
     block_size = (4, 4)
     acc_factors_2d = (1, 3)
-    regularization_factor = 0.3
     device = "cuda"
     calibration_data = torch.sum(torch.stack(shots), dim=0)
     calibration_images_per_coil = []
@@ -93,7 +92,7 @@ def preprocess_raw_data(seq, signal, R, Nread, Nphase_in_practice, fourier_facto
                                                                                     acc_factors_2d,
                                                                                     device,
                                                                                     block_size,
-                                                                                    regularization_factor)
+                                                                                    grappa_regularization_factor)
 
     for time_step in range(time_steps):
         step = time_series_shots[time_step]
@@ -114,7 +113,7 @@ def preprocess_raw_data(seq, signal, R, Nread, Nphase_in_practice, fourier_facto
     return calibration_img_sos, time_series_shots, grappa_weights_torch
 
 
-def simulate_and_process_mri(obj_p, seq_file_path, num_coils, grappa_weights_torch=None):
+def simulate_and_process_mri(obj_p, seq_file_path, num_coils, grappa_weights_torch=None,grappa_regularization_factor=0.001):
     # sequence parameter loading:
     seq_pulseq = pp.Sequence()
     seq_pulseq.read(seq_file_path)
@@ -130,6 +129,6 @@ def simulate_and_process_mri(obj_p, seq_file_path, num_coils, grappa_weights_tor
     graph = mr0.compute_graph(seq_mr0.cuda(), obj_p.cuda(), 200, 1e-3)
     signal = mr0.execute_graph(graph, seq_mr0.cuda(), obj_p.cuda(), print_progress=True)
 
-    calibration_img_sos, time_series_shots, grappa_weights_torch = preprocess_raw_data(seq_pulseq, signal, R, Nx, NySampled, fourier_factor, time_steps,num_coils=num_coils, grappa_weights_torch=grappa_weights_torch)
+    calibration_img_sos, time_series_shots, grappa_weights_torch = preprocess_raw_data(seq_pulseq, signal, R, Nx, NySampled, fourier_factor, time_steps,num_coils=num_coils, grappa_weights_torch=grappa_weights_torch, grappa_regularization_factor=grappa_regularization_factor)
 
     return calibration_img_sos, time_series_shots, grappa_weights_torch
