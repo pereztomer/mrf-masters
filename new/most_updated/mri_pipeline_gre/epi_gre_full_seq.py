@@ -30,7 +30,7 @@ def mrf_epi_sequence():
     # Imaging parameters
     fov = 220e-3
     slice_thickness = 8e-3
-    Nread = Nphase = 108
+    Nread = Nphase = 72
     R = 3
     assert Nread % 2 == 0 and Nread % R == 0
     seq_filename = "epi_gre_mrf_epi_no_inversion.seq"
@@ -152,7 +152,7 @@ def mrf_epi_sequence():
         if tr_delay > 0:
             seq.add_block(pp.make_delay(tr_delay))
 
-        seq.add_block(pp.make_delay(20))
+        seq.add_block(pp.make_delay(100))
 
     phase1_duration = seq.duration()[0]
     # Delay between phases

@@ -109,13 +109,10 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
 
 
 # ===== SETUP PARAMETERS =====
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_108\epi_gre_mrf_epi.seq"
+seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\12.8.24\72\epi_gre_mrf_epi.seq"
 phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_108\run_14"
+output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\12.8.24\72\run_1"
 
-# seq_path = "/home/tomer.perez/workspace/runs/gre_epi_108/epi_gre_mrf_epi_no_inversion.seq"s
-# phantom_path = "/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
-# output_path = "/home/tomer.perez/workspace/runs/gre_epi_108"
 epochs = 1000
 
 # ===== CREATE OUTPUT FOLDERS =====
@@ -292,14 +289,13 @@ if plot:
     display_time_series_shots(time_series_shots, flip_angles,
                               save_path=os.path.join(plots_output_path, 'time_series_shots.png'))
 
-exit()
 # ===== DEFINE NETWORK =====
 from mlp import create_simple_mlp
 
 model = create_simple_mlp(
     input_features=time_steps_number,  # 50 time steps
     output_features=3,  # T1, T2, PD
-    model_size="huge+"
+    model_size="tiny"
 )
 model = model.to("cuda")
 

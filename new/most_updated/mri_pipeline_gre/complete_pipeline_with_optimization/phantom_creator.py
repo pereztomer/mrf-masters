@@ -31,8 +31,9 @@ def create_phantom(Nread, Nphase, phantom_path, num_coils):
     # Manipulate properties
     phantom.T2dash[:] = 30e-3
     phantom.D *= 0
-    phantom.B0 *= 1  # alter the B0 inhomogeneity
-
+    # phantom.B0 *= 1  # alter the B0 inhomogeneity
+    phantom.B0.fill_(10)
+    phantom.B0.fill_(1.0831919+0j)
     # Add coil sensitivity maps if requested
 
     # Create coil sensitivity maps using our sensitivity_maps module
@@ -73,7 +74,9 @@ def create_phantom_with_custom_parameters(T1_map, T2_map, PD_map, Nread, Nphase,
     # Manipulate properties
     phantom.T2dash[:] = 30e-3
     phantom.D *= 0
-    phantom.B0 *= 1  # alter the B0 inhomogeneity
+    # phantom.B0 *= 1  # alter the B0 inhomogeneity
+    phantom.B0.fill_(10)
+    phantom.B0.fill_(1.0831919+0j)
 
     phantom.T1 = T1_map.unsqueeze(-1)
     phantom.T2 = T2_map.unsqueeze(-1)
@@ -132,7 +135,9 @@ def create_phantom_with_custom_params(T1_map, T2_map, PD_map, Nread=32, Nphase=3
     # Manipulate properties
     phantom.T2dash[:] = 30e-3
     phantom.D *= 0
-    phantom.B0 *= 1  # alter the B0 inhomogeneity
+    # phantom.B0 *= 1  # alter the B0 inhomogeneity
+    phantom.B0.fill_(10)
+    phantom.B0.fill_(1.0831919 + 0j)
 
     # Ensure all maps have the correct dimensions
     if len(T1_map.shape) == 2:

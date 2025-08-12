@@ -26,13 +26,13 @@ class SimpleMLP(nn.Module):
     def bounded_output_layer(self, x):
         """Simple bounded output layer using ReLU and clipping."""
         # T1: Range 0.2-3.7
-        t1 = torch.clamp(torch.relu(x[:, 0]), 0.2, 3.7)
+        t1 = torch.sigmoid(torch.relu(x[:, 0])) * 5
 
         # T2: Range 0-0.8
-        t2 = torch.clamp(torch.relu(x[:, 1]), 0.0, 0.8)
+        t2 = torch.sigmoid(torch.relu(x[:, 1])) * 0.8
 
         # PD: Range 0-1
-        pd = torch.clamp(torch.relu(x[:, 2]), 0.0, 1.0)
+        pd = torch.sigmoid(torch.relu(x[:, 2]))
 
         return torch.stack([t1, t2, pd], dim=1)
 

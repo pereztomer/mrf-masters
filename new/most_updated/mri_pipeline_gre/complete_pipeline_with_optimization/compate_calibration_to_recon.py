@@ -19,11 +19,11 @@ import os
 phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\numerical_brain_cropped.mat"
 # output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_108\run_14"
 
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\6.8.25\epi_with_full_relaxation_in_calibration_phase\epi_gre_mrf_epi.seq"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\6.8.25\epi_with_full_relaxation_in_calibration_phase"
+seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\7.8.25\epi_with_full_relaxation_in_calibration_phase\epi_gre_mrf_epi.seq"
+output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\7.8.25\epi_with_full_relaxation_in_calibration_phase"
 
 # ===== CREATE OUTPUT FOLDERS =====
-plots_output_path = os.path.join(output_path, 'plots3')
+plots_output_path = os.path.join(output_path, 'plots_2')
 models_output_path = os.path.join(output_path, 'models')
 os.makedirs(plots_output_path, exist_ok=True)
 os.makedirs(models_output_path, exist_ok=True)
@@ -70,7 +70,7 @@ for grappa_regularization_factor in reg_factors:
 
     # Calibration data
     # im1 = axes[0].imshow(calib_img, cmap='gray', vmin=img_min, vmax=img_max)
-    im1 = axes[0].imshow(calib_img, cmap='gray', vmin=0, vmax=200)
+    im1 = axes[0].imshow(calib_img, cmap='gray', vmin=0, vmax=50)
 
     axes[0].set_title('Calibration Data')
     axes[0].axis('off')
@@ -78,7 +78,7 @@ for grappa_regularization_factor in reg_factors:
 
     # Time series first shot
     # im2 = axes[1].imshow(time_img, cmap='gray', vmin=img_min, vmax=img_max)
-    im2 = axes[1].imshow(time_img, cmap='gray', vmin=0, vmax=200)
+    im2 = axes[1].imshow(time_img, cmap='gray', vmin=0, vmax=50)
     axes[1].set_title('Time Series Shot [0]')
     axes[1].axis('off')
     plt.colorbar(im2, ax=axes[1], fraction=0.046, pad=0.04)
