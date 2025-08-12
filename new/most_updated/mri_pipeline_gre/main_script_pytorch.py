@@ -12,7 +12,7 @@ base_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\m
 
 raw_data_path = os.path.join(base_path, "data.mat")
 output_dir = os.path.join(base_path, "plots")
-seq_file_path = os.path.join(base_path, "epi_gre_mrf_epi.seq")
+seq_file_path = os.path.join(base_path, "epi_gre_mrf_epi_no_inversion.seq")
 # Create output directory if it doesn't exist
 os.makedirs(output_dir, exist_ok=True)
 

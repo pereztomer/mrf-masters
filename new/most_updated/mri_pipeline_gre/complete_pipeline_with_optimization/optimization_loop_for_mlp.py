@@ -113,7 +113,7 @@ seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mr
 phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\numerical_brain_cropped.mat"
 output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\23.7.25\epi_gre_mrf_epi_108\run_14"
 
-# seq_path = "/home/tomer.perez/workspace/runs/gre_epi_108/epi_gre_mrf_epi.seq"s
+# seq_path = "/home/tomer.perez/workspace/runs/gre_epi_108/epi_gre_mrf_epi_no_inversion.seq"s
 # phantom_path = "/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
 # output_path = "/home/tomer.perez/workspace/runs/gre_epi_108"
 epochs = 1000

@@ -30,10 +30,13 @@ def mrf_epi_sequence():
     # Imaging parameters
     fov = 220e-3
     slice_thickness = 8e-3
-    Nread = Nphase = 108
+    Nread = Nphase = 72
     R = 3
+    TI = 50
     assert Nread % 2 == 0 and Nread % R == 0
-    seq_filename = "epi_gre_mrf_epi_no_inversion.seq"
+
+    seq_filename = "epi_gre_mrf_epi.seq"
+
     # Partial Fourier
     fourier_factor = 9 / 16
     fourier_factor = 1
@@ -64,6 +67,24 @@ def mrf_epi_sequence():
     # ======
     # CREATE EVENTS
     # ======
+
+    # Create fat-sat pulse
+    B0 = 2.89
+    sat_ppm = -3.45
+    sat_freq = sat_ppm * 1e-6 * B0 * system.gamma
+    rf_fs = pp.make_gauss_pulse(
+        flip_angle=110 * np.pi / 180,
+        system=system,
+        duration=8e-3,
+        bandwidth=np.abs(sat_freq),
+        freq_offset=sat_freq,
+        delay=system.rf_dead_time,
+    )
+    gz_fs = pp.make_trapezoid(channel='z', system=system, delay=pp.calc_duration(rf_fs), area=1 / 1e-4)
+
+    rf180_inversion = pp.make_adiabatic_pulse(
+        pulse_type='hypsec', system=system, duration=10.24e-3, dwell=1e-5, delay=system.rf_dead_time
+    )
 
     # RF pulses for each flip angle
     rf_pulses = []
@@ -112,8 +133,17 @@ def mrf_epi_sequence():
 
     for i in range(R):
         print(f"Reference shot {i + 1}/{R}")
+        seq.add_block(rf180_inversion)
+        inversion_time = pp.calc_duration(rf180_inversion)
+        fat_null_time = pp.calc_duration(rf_fs, gz_fs)
+        additional_time = TI / 1000 - inversion_time - fat_null_time
+        if additional_time < 0:
+            print("make sure that fat nulling + inversion is shorter than 50ms")
+        else:
+            seq.add_block(pp.make_delay(additional_time))
 
         # RF spoiling
+        seq.add_block(rf_fs, gz_fs)
         rf_pulses[0].phase_offset = rf_phase / 180 * np.pi
         adc.phase_offset = rf_phase / 180 * np.pi
         rf_inc = divmod(rf_inc + rf_spoiling_inc, 360.0)[1]
@@ -127,6 +157,7 @@ def mrf_epi_sequence():
 
         seq.add_block(gx_pre, gp_pre, gz_reph_list[0])
 
+        seq.add_block(pp.make_delay(2.3/1000)) # custom delay only for 72X72 matrix to have echo time = 18ms
         # EPI readout (your original structure)
         for ii in range(0, Nphase_in_practice // 2):
             seq.add_block(gx, adc)
@@ -152,11 +183,11 @@ def mrf_epi_sequence():
         if tr_delay > 0:
             seq.add_block(pp.make_delay(tr_delay))
 
-        seq.add_block(pp.make_delay(20))
+        seq.add_block(pp.make_delay(1000))
 
     phase1_duration = seq.duration()[0]
     # Delay between phases
-    seq.add_block(pp.make_delay(3.0))
+    seq.add_block(pp.make_delay(1000))
     phase2_start_time = seq.duration()[0]
     delay_between_phases = phase2_start_time - phase1_duration
 
@@ -168,9 +199,19 @@ def mrf_epi_sequence():
     rf_phase = 0
     rf_inc = 0
 
+    seq.add_block(rf180_inversion)
+    inversion_time = pp.calc_duration(rf180_inversion)
+    fat_null_time = pp.calc_duration(rf_fs, gz_fs)
+    additional_time = TI / 1000 - inversion_time - fat_null_time
+    seq.add_block(rf180_inversion)
+    if additional_time < 0:
+        print("make sure that fat nulling + inversion is shorter than 50ms")
+    else:
+        seq.add_block(pp.make_delay(additional_time))
+
     for t in range(len(flip_angles)):
         print(f"MRF time point {t + 1}/{len(flip_angles)}: FA={flip_angles[t]}°, TR={tr_values[t] * 1000:.0f}ms")
-
+        seq.add_block(rf_fs, gz_fs)
         # RF spoiling
         rf_pulses[t].phase_offset = rf_phase / 180 * np.pi
         adc.phase_offset = rf_phase / 180 * np.pi
@@ -183,6 +224,7 @@ def mrf_epi_sequence():
         # Pre-phasing for accelerated acquisition (every R-th line)
         gp_pre = pp.make_trapezoid(channel='y', area=(-(Nphase // 2)) / fov, system=system)
         seq.add_block(gx_pre, gp_pre, gz_reph_list[t])
+        seq.add_block(pp.make_delay(2.3/1000)) # custom delay only for 72X72 matrix to have echo time = 18ms
 
         # Single-shot EPI readout (accelerated by R)
         for ii in range(0, Nphase_in_practice // 2):
@@ -193,7 +235,7 @@ def mrf_epi_sequence():
 
         # Spoiling
         gy_spoil = pp.make_trapezoid(channel='y', area=4 * (-Nphase_in_practice * R) / fov, system=system)
-        seq.add_block(gx_spoil, gy_spoil)
+        seq.add_block(gx_spoil, gy_spoil, gz_spoil)
 
         # TR timing
         current_duration = (pp.calc_duration(rf_pulses[t], gz_list[t]) +
@@ -202,7 +244,7 @@ def mrf_epi_sequence():
                                                        pp.calc_duration(gp_blip) +
                                                        pp.calc_duration(gx_, adc) +
                                                        pp.calc_duration(gp_blip)) +
-                            pp.calc_duration(gx_spoil, gy_spoil))
+                            pp.calc_duration(gx_spoil, gy_spoil, gz_spoil))
 
         tr_delay = tr_values[t] - current_duration
         if tr_delay > 0:
@@ -215,9 +257,9 @@ def mrf_epi_sequence():
     phase2_end_time = seq.duration()[0]
     phase2_duration = phase2_end_time - phase2_start_time
 
-    # ======
-    # FINALIZE
-    # ======
+    # # ======
+    # # FINALIZE
+    # # ======
     ok, error_report = seq.check_timing()
     if ok:
         print('✅ Timing check passed')
