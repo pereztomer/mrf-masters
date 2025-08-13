@@ -98,9 +98,11 @@ def GRAPPA_interpolate_imageSpace_2d_torch(undersampled_kspace_kxkyc, acc_factor
                                                                       GRAPPA_weights, device)
 
     undersampled_kspace_kxkyc = torch.movedim(undersampled_kspace_kxkyc, coil_axis, -1).to(device)  # Move once to GPU
-    firstAcquirePoint_ky = torch.nonzero(torch.sum(torch.abs(undersampled_kspace_kxkyc[:, :, 0]), axis=1))[0][0]
-    firstAcquirePoint_kx = torch.nonzero(torch.sum(torch.abs(undersampled_kspace_kxkyc[:, :, 0]), axis=0))[0][0]
+    # firstAcquirePoint_ky = torch.nonzero(torch.sum(torch.abs(undersampled_kspace_kxkyc[:, :, 0]), axis=1))[0][0]
+    # firstAcquirePoint_kx = torch.nonzero(torch.sum(torch.abs(undersampled_kspace_kxkyc[:, :, 0]), axis=0))[0][0]
 
+    firstAcquirePoint_ky = torch.tensor(0, device='cuda:0', dtype=torch.int64)
+    firstAcquirePoint_kx = torch.tensor(0, device='cuda:0', dtype=torch.int64)
     recon_kspace_kxkyc = torch.zeros_like(undersampled_kspace_kxkyc).to(device)
     recon_kspace_kxkyc[firstAcquirePoint_ky::acc_factor1, firstAcquirePoint_kx::acc_factor2, :] = undersampled_kspace_kxkyc[firstAcquirePoint_ky::acc_factor1, firstAcquirePoint_kx::acc_factor2, :]
 

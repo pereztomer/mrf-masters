@@ -14,52 +14,124 @@ from plotting_utils import *
 import os
 
 
+# def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
+#                           t1_pred, t2_pred, pd_pred, real_batch, sim_batch, plots_path):
+#     from mpl_toolkits.axes_grid1 import make_axes_locatable
+#     """Short plotting function for training visualization."""
+#     # Main plot
+#     fig, axes = plt.subplots(4, 4, figsize=(20, 16))
+#
+#     # Maps (rows 1-2) with shared colorbars
+#     maps = [(T1_gt, t1_pred, 'T1'), (T2_gt, t2_pred, 'T2'), (PD_gt, pd_pred, 'PD')]
+#     for i, (gt, pred, name) in enumerate(maps):
+#         gt_np, pred_np = gt.cpu().numpy(), pred.detach().cpu().numpy()
+#         vmin, vmax = min(gt_np.min(), pred_np.min()), max(gt_np.max(), pred_np.max())
+#
+#         # Ground truth
+#         im1 = axes[0, i].imshow(gt_np, cmap='viridis', vmin=vmin, vmax=vmax)
+#         axes[0, i].set_title(f'GT {name}')
+#         axes[0, i].axis('off')
+#
+#         # Prediction (same scale as GT)
+#         im2 = axes[1, i].imshow(pred_np, cmap='viridis', vmin=vmin, vmax=vmax)
+#         axes[1, i].set_title(f'Pred {name}')
+#         axes[1, i].axis('off')
+#
+#         # Single colorbar for both GT and Pred (shared scale)
+#         plt.colorbar(im1, ax=[axes[0, i], axes[1, i]], fraction=0.046, pad=0.04)
+#
+#     # Images (rows 3-4) with shared colorbars
+#     real_imgs = real_batch.squeeze().detach().cpu().numpy()
+#     sim_imgs = sim_batch.squeeze().detach().cpu().numpy()
+#     vmin, vmax = min(real_imgs.min(), sim_imgs.min()), max(real_imgs.max(), sim_imgs.max())
+#
+#     for t in range(4):
+#         # Real images
+#         im3 = axes[2, t].imshow(real_imgs[t * 5], cmap='gray', vmin=vmin, vmax=vmax)
+#         axes[2, t].set_title(f'Real t={t}')
+#         axes[2, t].axis('off')
+#
+#         # Simulated images (same scale as real)
+#         im4 = axes[3, t].imshow(sim_imgs[t * 5], cmap='gray', vmin=vmin, vmax=vmax)
+#         axes[3, t].set_title(f'Sim t={t}')
+#         axes[3, t].axis('off')
+#
+#         # Create colorbar for image pair
+#         divider = make_axes_locatable(axes[3, t])
+#         cax = divider.append_axes("right", size="5%", pad=0.05)
+#         plt.colorbar(im3, cax=cax)
+#
+#     # Hide unused subplots
+#     axes[0, 3].axis('off')
+#     axes[1, 3].axis('off')
+#
+#     plt.tight_layout()
+#     os.makedirs(f"{plots_path}/iterations", exist_ok=True)
+#     plt.savefig(f"{plots_path}/iterations/iter_{iteration:04d}.png", dpi=150, bbox_inches='tight')
+#     plt.close()
+#
+#     # Enhanced Loss plots
+#     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+#
+#     # Full loss curve (log scale)
+#     axes[0].semilogy(losses)
+#     axes[0].set_title(f'Full Loss Curve (Iter {iteration + 1}/{epochs})')
+#     axes[0].set_xlabel('Iteration')
+#     axes[0].set_ylabel('Loss (log scale)')
+#     axes[0].grid(True, alpha=0.3)
+#
+#     plt.tight_layout()
+#     plt.savefig(f"{plots_path}/loss_curve.png", dpi=150, bbox_inches='tight')
+#     plt.close()
 def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
-                          t1_pred, t2_pred, pd_pred, real_batch, sim_batch, plots_path):
-    from mpl_toolkits.axes_grid1 import make_axes_locatable
-    """Short plotting function for training visualization."""
-    # Main plot
-    fig, axes = plt.subplots(4, 4, figsize=(20, 16))
+                          t1_pred, t2_pred, pd_pred, real_batch, sim_batch, plots_path,
+                          t1_losses, t2_losses, pd_losses):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import os
 
-    # Maps (rows 1-2) with shared colorbars
+    # Current loss
+    current_loss = losses[-1] if losses else 0
+
+    # Main plot - back to 4x4 grid
+    fig, axes = plt.subplots(4, 4, figsize=(20, 16))
+    fig.suptitle(f'Iteration {iteration + 1}/{epochs} | Loss: {current_loss:.6f}', fontsize=16)
+
+    # Maps (rows 0-1)
     maps = [(T1_gt, t1_pred, 'T1'), (T2_gt, t2_pred, 'T2'), (PD_gt, pd_pred, 'PD')]
+
     for i, (gt, pred, name) in enumerate(maps):
         gt_np, pred_np = gt.cpu().numpy(), pred.detach().cpu().numpy()
         vmin, vmax = min(gt_np.min(), pred_np.min()), max(gt_np.max(), pred_np.max())
 
-        # Ground truth
-        im1 = axes[0, i].imshow(gt_np, cmap='viridis', vmin=vmin, vmax=vmax)
-        axes[0, i].set_title(f'GT {name}')
-        axes[0, i].axis('off')
+        # GT and Prediction
+        for j, (img, title) in enumerate([(gt_np, f'GT {name}'), (pred_np, f'Pred {name}')]):
+            im = axes[j, i].imshow(img, cmap='viridis', vmin=vmin, vmax=vmax)
+            axes[j, i].set_title(title)
+            axes[j, i].axis('off')
 
-        # Prediction (same scale as GT)
-        im2 = axes[1, i].imshow(pred_np, cmap='viridis', vmin=vmin, vmax=vmax)
-        axes[1, i].set_title(f'Pred {name}')
-        axes[1, i].axis('off')
+        # Create colorbar on the right side
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        divider = make_axes_locatable(axes[1, i])
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        plt.colorbar(im, cax=cax)
 
-        # Single colorbar for both GT and Pred (shared scale)
-        plt.colorbar(im1, ax=[axes[0, i], axes[1, i]], fraction=0.046, pad=0.04)
-
-    # Images (rows 3-4) with shared colorbars
+    # Images (rows 2-3)
     real_imgs = real_batch.squeeze().detach().cpu().numpy()
     sim_imgs = sim_batch.squeeze().detach().cpu().numpy()
     vmin, vmax = min(real_imgs.min(), sim_imgs.min()), max(real_imgs.max(), sim_imgs.max())
 
     for t in range(4):
-        # Real images
-        im3 = axes[2, t].imshow(real_imgs[t * 5], cmap='gray', vmin=vmin, vmax=vmax)
-        axes[2, t].set_title(f'Real t={t}')
-        axes[2, t].axis('off')
+        for j, (imgs, prefix) in enumerate([(real_imgs, 'Real'), (sim_imgs, 'Sim')]):
+            im = axes[j + 2, t].imshow(imgs[t * 5], cmap='gray', vmin=vmin, vmax=vmax)
+            axes[j + 2, t].set_title(f'{prefix} t={t}')
+            axes[j + 2, t].axis('off')
 
-        # Simulated images (same scale as real)
-        im4 = axes[3, t].imshow(sim_imgs[t * 5], cmap='gray', vmin=vmin, vmax=vmax)
-        axes[3, t].set_title(f'Sim t={t}')
-        axes[3, t].axis('off')
-
-        # Create colorbar for image pair
+        # Create colorbar on the right side for each time point
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
         divider = make_axes_locatable(axes[3, t])
         cax = divider.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(im3, cax=cax)
+        plt.colorbar(im, cax=cax)
 
     # Hide unused subplots
     axes[0, 3].axis('off')
@@ -70,38 +142,27 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
     plt.savefig(f"{plots_path}/iterations/iter_{iteration:04d}.png", dpi=150, bbox_inches='tight')
     plt.close()
 
-    # Enhanced Loss plots
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    # Loss plots - separate subplot for each component
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
-    # Full loss curve (log scale)
-    axes[0].semilogy(losses)
-    axes[0].set_title(f'Full Loss Curve (Iter {iteration + 1}/{epochs})')
-    axes[0].set_xlabel('Iteration')
-    axes[0].set_ylabel('Loss (log scale)')
-    axes[0].grid(True, alpha=0.3)
+    # Total loss
+    axes[0, 0].semilogy(losses)
+    axes[0, 0].set_title(f'Total Loss | Current: {current_loss:.6f}')
+    axes[0, 0].set_xlabel('Iteration')
+    axes[0, 0].set_ylabel('Loss (log scale)')
+    axes[0, 0].grid(True, alpha=0.3)
 
-    # Recent loss curve (linear scale for better detail)
-    if len(losses) > 20:
-        start_idx = max(0, len(losses) - min(50, len(losses) // 2))  # Last 50 iterations or half
-        recent_losses = losses[start_idx:]
-        recent_indices = range(start_idx, len(losses))
+    # Individual component losses
+    components = [(t1_losses, 'T1', 'red'), (t2_losses, 'T2', 'blue'), (pd_losses, 'PD', 'green')]
+    positions = [(0, 1), (1, 0), (1, 1)]
 
-        axes[1].plot(recent_indices, recent_losses, 'b-', linewidth=2)
-        axes[1].set_title(f'Recent Loss Detail (Last {len(recent_losses)} iters)')
-        axes[1].set_xlabel('Iteration')
-        axes[1].set_ylabel('Loss (linear scale)')
-        axes[1].grid(True, alpha=0.3)
-
-        # Add current loss value as text
-        axes[1].text(0.05, 0.95, f'Current: {losses[-1]:.2e}',
-                     transform=axes[1].transAxes, fontsize=12,
-                     bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7))
-    else:
-        axes[1].semilogy(losses)
-        axes[1].set_title('Loss (Log Scale)')
-        axes[1].set_xlabel('Iteration')
-        axes[1].set_ylabel('Loss (log scale)')
-        axes[1].grid(True, alpha=0.3)
+    for (losses_comp, name, color), (row, col) in zip(components, positions):
+        current_comp_loss = losses_comp[-1] if losses_comp else 0
+        axes[row, col].semilogy(losses_comp, color=color)
+        axes[row, col].set_title(f'{name} Loss | Current: {current_comp_loss:.6f}')
+        axes[row, col].set_xlabel('Iteration')
+        axes[row, col].set_ylabel('Loss (log scale)')
+        axes[row, col].grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.savefig(f"{plots_path}/loss_curve.png", dpi=150, bbox_inches='tight')
@@ -109,11 +170,15 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
 
 
 # ===== SETUP PARAMETERS =====
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\12.8.24\72\epi_gre_mrf_epi.seq"
-phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\numerical_brain_cropped.mat"
+seq_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/gre_epi_72.seq"
+phantom_path = r"/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
+output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_1"
+#
+# seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\12.8.24\72\epi_gre_mrf_epi.seq"
+seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_36.seq"
+phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\numerical_brain_cropped.mat"
 output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\12.8.24\72\run_1"
-
-epochs = 1000
+epochs = 10000
 
 # ===== CREATE OUTPUT FOLDERS =====
 plots_output_path = os.path.join(output_path, 'plots')
@@ -141,7 +206,6 @@ obj_p = phantom.build()
 # ===== INITIAL SIMULATION DATA =====
 calibration_data, time_series_shots, grappa_weights_torch = simulate_and_process_mri(obj_p, seq_path, num_coils)
 grappa_weights_torch = grappa_weights_torch.detach()
-
 
 T1_ground_truth = phantom.T1.squeeze().to("cuda")
 T2_ground_truth = phantom.T2.squeeze().to("cuda")
@@ -174,61 +238,6 @@ normalized_time_series = (masked_reshaped - means) / (stds + 1e-8)
 
 # Transpose to get (num_pixels, time_steps) format
 pixel_time_series = normalized_time_series.transpose(0, 1).to("cuda")  # Shape: (665, 50)
-
-# import matplotlib.pyplot as plt
-# from matplotlib.widgets import Slider
-#
-#
-# # Interactive plot function
-# def interactive_mask_plot():
-#     gt_mask = T1_ground_truth > 0
-#
-#     fig, axes = plt.subplots(3, 3, figsize=(18, 12))
-#     plt.subplots_adjust(bottom=0.15)
-#
-#     # Add slider
-#     ax_slider = plt.axes([0.2, 0.02, 0.5, 0.03])
-#     slider = Slider(ax_slider, 'Threshold', 1, 200, valinit=100, valfmt='%d')
-#
-#     def update(val):
-#         threshold = slider.val
-#         current_mask = calibration_data > threshold
-#         missing = gt_mask.cpu() & ~current_mask.cpu()
-#
-#         # Clear and redraw
-#         for ax in axes.flat:
-#             ax.clear()
-#
-#         # Row 1: Masks
-#         axes[0, 0].imshow(current_mask.cpu(), cmap='gray');
-#         axes[0, 0].set_title('Current Mask')
-#         axes[0, 1].imshow(gt_mask.cpu(), cmap='gray');
-#         axes[0, 1].set_title('GT T1 Mask')
-#         axes[0, 2].imshow(missing, cmap='gray');
-#         axes[0, 2].set_title('Missing Pixels')
-#
-#         # Row 2: Data with masks
-#         axes[1, 0].imshow((calibration_data.cpu() * current_mask.cpu()), cmap='gray');
-#         axes[1, 0].set_title('Calib × Mask')
-#         axes[1, 1].imshow((T1_ground_truth.cpu() * gt_mask.cpu()), cmap='viridis');
-#         axes[1, 1].set_title('T1 × GT Mask')
-#         axes[1, 2].axis('off')
-#
-#         # Row 3: Raw data
-#         axes[2, 0].imshow(calibration_data.cpu(), cmap='gray');
-#         axes[2, 0].set_title('Raw Calib')
-#         axes[2, 1].imshow(T1_ground_truth.cpu(), cmap='viridis');
-#         axes[2, 1].set_title('Raw T1')
-#         axes[2, 2].axis('off')
-#
-#         plt.draw()
-#
-#     slider.on_changed(update)
-#     update(100)
-#     plt.show()
-#
-#
-# interactive_mask_plot()
 
 # Get spatial indices for reconstruction
 masked_indices = torch.where(mask)
@@ -284,8 +293,6 @@ if plot:
     plt.tight_layout()
     plt.savefig(os.path.join(plots_output_path, 'calibration5.png'), dpi=150, bbox_inches='tight')
 
-
-
     display_time_series_shots(time_series_shots, flip_angles,
                               save_path=os.path.join(plots_output_path, 'time_series_shots.png'))
 
@@ -295,7 +302,7 @@ from mlp import create_simple_mlp
 model = create_simple_mlp(
     input_features=time_steps_number,  # 50 time steps
     output_features=3,  # T1, T2, PD
-    model_size="tiny"
+    model_size="huge+"
 )
 model = model.to("cuda")
 
@@ -306,16 +313,19 @@ model = model.to("cuda")
 # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)  # Higher LR
 # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)  # Less aggressive
 
-optimizer = torch.optim.Adam(
-    model.parameters(),
-    lr=0.0005,           # Lower LR
-    weight_decay=1e-4    # Add regularization for larger models
-)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0)
+
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
 
-
 losses = []
+t1_losses = []
+t2_losses = []
+pd_losses = []
 
+best_loos = 1000000000000
+best_t1_loss = 1000000000000
+best_t2_loss = 1000000000000
+best_pd_loss = 1000000000000
 
 # ===== MAIN TRAINING LOOP =====
 print("Starting training...")
@@ -347,11 +357,19 @@ for iteration in range(epochs):
     t2_predicted = t2_predicted * mask.float()
     pd_predicted = pd_predicted * mask.float()
 
+    current_t1_loss = F.mse_loss(t1_predicted, T1_ground_truth)
+    current_t2_loss = F.mse_loss(t2_predicted, T2_ground_truth)
+    current_pd_loss = F.mse_loss(pd_predicted, PD_ground_truth)
+
+    t1_losses.append(current_t1_loss.item())
+    t2_losses.append(current_t2_loss.item())
+    pd_losses.append(current_pd_loss.item())
+
     # # Create phantom and simulate
     obj_p_pred = phantom_creator.create_phantom_with_custom_parameters(
-        T1_map=T1_ground_truth,
+        T1_map=t1_predicted,
         T2_map=t2_predicted,
-        PD_map=PD_ground_truth,
+        PD_map=pd_predicted,
         Nread=Nx,
         Nphase=Ny,
         phantom_path=phantom_path,
@@ -370,21 +388,23 @@ for iteration in range(epochs):
     mask_expanded = mask.unsqueeze(0).expand_as(time_series_shots)  # Shape: (50, 36, 36)
 
     # Calculate normalized loss using quantiles
-    relative_loss = 0
-    for t in range(len(time_series_shots)):
-        # Extract masked pixels for this time point
-        real_t = time_series_shots[t][mask]  # Shape: (num_masked_pixels,)
-        sim_t = sim_images_batch.squeeze()[t][mask]  # Shape: (num_masked_pixels,)
+    # relative_loss = 0
+    # for t in range(len(time_series_shots)):
+    #     # Extract masked pixels for this time point
+    #     real_t = time_series_shots[t][mask]  # Shape: (num_masked_pixels,)
+    #     sim_t = sim_images_batch.squeeze()[t][mask]  # Shape: (num_masked_pixels,)
+    #
+    #     mse_loss = F.mse_loss(real_t, sim_t)
+    #
+    #     mean = torch.mean(real_t)
+    #
+    #     relative_loss += mse_loss/mean
+    #
+    # # Average across time points
+    # per_pixel_loss = relative_loss / len(time_series_shots)
+    # image_loss = per_pixel_loss
 
-        mse_loss = F.mse_loss(real_t, sim_t)
-        mean = torch.mean(real_t)
-
-
-        relative_loss += mse_loss/mean
-
-    # Average across time points
-    per_pixel_loss = relative_loss / len(time_series_shots)
-    image_loss = per_pixel_loss
+    image_loss = F.mse_loss(time_series_shots[mask_expanded], sim_images_batch.squeeze()[mask_expanded])
 
 
     def check_gradients(model, loss):
@@ -405,15 +425,34 @@ for iteration in range(epochs):
     scheduler.step()
     # Track loss
     losses.append(image_loss.item())
+    if iteration % 100 == 0:
+        total_grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
+        print(f"Grad norm: {total_grad_norm:.6f}")
 
     # Progress
     print(f"Iteration {iteration}: Loss = {image_loss.item():.8f}")
 
     # Plot results
-    if iteration % 3 == 0:
+    if (iteration % 50 == 0 or
+            current_t1_loss < best_t1_loss or
+            best_t2_loss < best_loos or
+            best_pd_loss < best_pd_loss or
+            image_loss < best_loos):
+        # iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
+        # t1_pred, t2_pred, pd_pred, real_batch, sim_batch, plots_path,
+        # t1_losses, t2_losses, pd_losses
         plot_training_results(iteration, epochs, losses, T1_ground_truth, T2_ground_truth, PD_ground_truth,
                               t1_predicted, t2_predicted, pd_predicted, time_series_shots, sim_images_batch,
-                              plots_output_path)
+                              plots_output_path, t1_losses, t2_losses, pd_losses)
+
+    if current_t1_loss < best_t1_loss:
+        best_t1_loss = current_t1_loss
+    if current_t2_loss < best_t2_loss:
+        best_t2_loss = current_t2_loss
+    if current_pd_loss < best_pd_loss:
+        best_pd_loss = current_pd_loss
+    if image_loss < best_loos:
+        best_loos = image_loss
 
     # Early stopping
     if image_loss.item() < 1e-7:

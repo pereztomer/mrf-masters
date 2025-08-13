@@ -6,7 +6,7 @@ import MRzeroCore as mr0
 import torch
 
 # ---------------- Load Sequence & Phantom ----------------
-seq_file = r"epi_gre_mrf_epi.seq"
+seq_file = r"gre_epi_108.seq"
 seq0 = mr0.Sequence.import_file(seq_file)
 obj_p = mr0.VoxelGridPhantom.load_mat("numerical_brain_cropped.mat")
 obj_p = obj_p.build()

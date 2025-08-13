@@ -30,16 +30,17 @@ def mrf_epi_sequence():
     # Imaging parameters
     fov = 220e-3
     slice_thickness = 8e-3
-    Nread = Nphase = 72
+    Nread = Nphase = 108
+    TE = 18 / 1000  # 18MS
     R = 3
     TI = 50
     assert Nread % 2 == 0 and Nread % R == 0
 
-    seq_filename = "epi_gre_mrf_epi.seq"
+    seq_filename = f"gre_epi_{Nread}.seq"
 
     # Partial Fourier
     fourier_factor = 9 / 16
-    fourier_factor = 1
+    # fourier_factor = 1
     Nphase_in_practice = int((Nread / R) * fourier_factor)
     rf_spoiling_inc = 117  # RF spoiling increment
 
@@ -155,9 +156,27 @@ def mrf_epi_sequence():
         # Pre-phasing for this shot
         gp_pre = pp.make_trapezoid(channel='y', area=(-(Nphase // 2) + i) / fov, system=system)
 
+        # Adding delay for proper TE
         seq.add_block(gx_pre, gp_pre, gz_reph_list[0])
-
-        seq.add_block(pp.make_delay(2.3/1000)) # custom delay only for 72X72 matrix to have echo time = 18ms
+        # if fourier_factor == 1:
+        #     # time_to_kspace_center = (((((Nphase_in_practice // 4) - 1) *
+        #     #                          pp.calc_duration(gx, adc) +
+        #     #                          pp.calc_duration(gx_, adc) +
+        #     #                          2 * pp.calc_duration(gp_blip)) +
+        #     #                          pp.calc_duration(gx, adc)) +
+        #     #                          pp.calc_duration(gp_blip))
+        #
+        #     term_1 = pp.calc_duration(gx, adc) + pp.calc_duration(gx_, adc) + 2 * pp.calc_duration(gp_blip)
+        #     term_2 = pp.calc_duration(gx, adc) + pp.calc_duration(gp_blip) + 0.5 * pp.calc_duration(gx, adc)
+        #     time_to_kspace_center = ((Nphase_in_practice // 4) - 1) * term_1 + term_2
+        #     if time_to_kspace_center < TE:
+        #         additional_time_to_TE = TE - time_to_kspace_center
+        #         seq.add_block(pp.make_delay(additional_time_to_TE))
+        #     else:
+        #         raise "TE is too short!"
+        # else:
+        #     raise NotImplementedError(f"fourier factor {fourier_factor} TE proper calculation not implemented")
+        # seq.add_block(pp.make_delay(9.7 / 1000))  # custom delay only for 36X36 matrix to have echo time = 18ms
         # EPI readout (your original structure)
         for ii in range(0, Nphase_in_practice // 2):
             seq.add_block(gx, adc)
@@ -224,7 +243,27 @@ def mrf_epi_sequence():
         # Pre-phasing for accelerated acquisition (every R-th line)
         gp_pre = pp.make_trapezoid(channel='y', area=(-(Nphase // 2)) / fov, system=system)
         seq.add_block(gx_pre, gp_pre, gz_reph_list[t])
-        seq.add_block(pp.make_delay(2.3/1000)) # custom delay only for 72X72 matrix to have echo time = 18ms
+
+        # Adding delay for proper TE
+        # if fourier_factor == 1:
+        #     # time_to_kspace_center = (((((Nphase_in_practice // 4) - 1) *
+        #     #                            pp.calc_duration(gx, adc) +
+        #     #                            pp.calc_duration(gx_, adc) +
+        #     #                            2 * pp.calc_duration(gp_blip)) +
+        #     #                           pp.calc_duration(gx, adc)) +
+        #     #                          pp.calc_duration(gp_blip))
+        #     term_1 = pp.calc_duration(gx, adc) + pp.calc_duration(gx_, adc) + 2 * pp.calc_duration(gp_blip)
+        #     term_2 = pp.calc_duration(gx, adc) + pp.calc_duration(gp_blip) + 0.5 * pp.calc_duration(gx, adc)
+        #     time_to_kspace_center = ((Nphase_in_practice // 4) - 1) * term_1 + term_2
+        #     if time_to_kspace_center < TE:
+        #         additional_time_to_TE = TE - time_to_kspace_center
+        #         seq.add_block(pp.make_delay(additional_time_to_TE))
+        #     else:
+        #         raise "TE is too short!"
+        # else:
+        #     raise NotImplementedError(f"fourier factor {fourier_factor} TE proper calculation not implemented")
+
+        # seq.add_block(pp.make_delay(9.7 / 1000))  # custom delay only for 36X36 matrix to have echo time = 18ms
 
         # Single-shot EPI readout (accelerated by R)
         for ii in range(0, Nphase_in_practice // 2):

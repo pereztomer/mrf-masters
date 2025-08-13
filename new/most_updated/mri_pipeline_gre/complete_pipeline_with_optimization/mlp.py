@@ -40,7 +40,7 @@ class SimpleMLP(nn.Module):
         # Input: [batch_size, input_features] e.g., [1296, 50]
         x = self.mlp(x)
         # Apply sigmoid to each output individually (values between 0 and 1)
-        x = self.bounded_output_layer(x)
+        # x = self.bounded_output_layer(x)
         return x  # [batch_size, output_features] e.g., [1296, 3]
 
 
