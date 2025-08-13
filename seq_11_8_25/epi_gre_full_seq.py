@@ -30,7 +30,7 @@ def mrf_epi_sequence():
     # Imaging parameters
     fov = 220e-3
     slice_thickness = 8e-3
-    Nread = Nphase = 108
+    Nread = Nphase = 36
     TE = 18 / 1000  # 18MS
     R = 3
     TI = 50
@@ -154,7 +154,8 @@ def mrf_epi_sequence():
         seq.add_block(rf_pulses[0], gz_list[0])
 
         # Pre-phasing for this shot
-        gp_pre = pp.make_trapezoid(channel='y', area=(-(Nphase // 2) + i) / fov, system=system)
+        # gp_pre = pp.make_trapezoid(channel='y', area=(-(Nphase // 2) + i) / fov, system=system)
+        gp_pre = pp.make_trapezoid(channel='y', area=(-Nphase * (fourier_factor - 0.5) + i) / fov, system=system)
 
         # Adding delay for proper TE
         seq.add_block(gx_pre, gp_pre, gz_reph_list[0])
@@ -213,86 +214,86 @@ def mrf_epi_sequence():
     # ======
     # PHASE 2: MRF TIME SERIES (SINGLE-SHOT ACCELERATED)
     # ======
-    print("=== PHASE 2: MRF Time Series ===")
-
-    rf_phase = 0
-    rf_inc = 0
-
-    seq.add_block(rf180_inversion)
-    inversion_time = pp.calc_duration(rf180_inversion)
-    fat_null_time = pp.calc_duration(rf_fs, gz_fs)
-    additional_time = TI / 1000 - inversion_time - fat_null_time
-    seq.add_block(rf180_inversion)
-    if additional_time < 0:
-        print("make sure that fat nulling + inversion is shorter than 50ms")
-    else:
-        seq.add_block(pp.make_delay(additional_time))
-
-    for t in range(len(flip_angles)):
-        print(f"MRF time point {t + 1}/{len(flip_angles)}: FA={flip_angles[t]}°, TR={tr_values[t] * 1000:.0f}ms")
-        seq.add_block(rf_fs, gz_fs)
-        # RF spoiling
-        rf_pulses[t].phase_offset = rf_phase / 180 * np.pi
-        adc.phase_offset = rf_phase / 180 * np.pi
-        rf_inc = divmod(rf_inc + rf_spoiling_inc, 360.0)[1]
-        rf_phase = divmod(rf_phase + rf_inc, 360.0)[1]
-
-        # Excitation
-        seq.add_block(rf_pulses[t], gz_list[t])
-
-        # Pre-phasing for accelerated acquisition (every R-th line)
-        gp_pre = pp.make_trapezoid(channel='y', area=(-(Nphase // 2)) / fov, system=system)
-        seq.add_block(gx_pre, gp_pre, gz_reph_list[t])
-
-        # Adding delay for proper TE
-        # if fourier_factor == 1:
-        #     # time_to_kspace_center = (((((Nphase_in_practice // 4) - 1) *
-        #     #                            pp.calc_duration(gx, adc) +
-        #     #                            pp.calc_duration(gx_, adc) +
-        #     #                            2 * pp.calc_duration(gp_blip)) +
-        #     #                           pp.calc_duration(gx, adc)) +
-        #     #                          pp.calc_duration(gp_blip))
-        #     term_1 = pp.calc_duration(gx, adc) + pp.calc_duration(gx_, adc) + 2 * pp.calc_duration(gp_blip)
-        #     term_2 = pp.calc_duration(gx, adc) + pp.calc_duration(gp_blip) + 0.5 * pp.calc_duration(gx, adc)
-        #     time_to_kspace_center = ((Nphase_in_practice // 4) - 1) * term_1 + term_2
-        #     if time_to_kspace_center < TE:
-        #         additional_time_to_TE = TE - time_to_kspace_center
-        #         seq.add_block(pp.make_delay(additional_time_to_TE))
-        #     else:
-        #         raise "TE is too short!"
-        # else:
-        #     raise NotImplementedError(f"fourier factor {fourier_factor} TE proper calculation not implemented")
-
-        # seq.add_block(pp.make_delay(9.7 / 1000))  # custom delay only for 36X36 matrix to have echo time = 18ms
-
-        # Single-shot EPI readout (accelerated by R)
-        for ii in range(0, Nphase_in_practice // 2):
-            seq.add_block(gx, adc)
-            seq.add_block(gp_blip)
-            seq.add_block(gx_, adc)
-            seq.add_block(gp_blip)
-
-        # Spoiling
-        gy_spoil = pp.make_trapezoid(channel='y', area=4 * (-Nphase_in_practice * R) / fov, system=system)
-        seq.add_block(gx_spoil, gy_spoil, gz_spoil)
-
-        # TR timing
-        current_duration = (pp.calc_duration(rf_pulses[t], gz_list[t]) +
-                            pp.calc_duration(gx_pre, gp_pre, gz_reph_list[t]) +
-                            Nphase_in_practice // 2 * (pp.calc_duration(gx, adc) +
-                                                       pp.calc_duration(gp_blip) +
-                                                       pp.calc_duration(gx_, adc) +
-                                                       pp.calc_duration(gp_blip)) +
-                            pp.calc_duration(gx_spoil, gy_spoil, gz_spoil))
-
-        tr_delay = tr_values[t] - current_duration
-        if tr_delay > 0:
-            seq.add_block(pp.make_delay(tr_delay))
-        else:
-            print(
-                f"Warning: TR {t + 1} too short! Need {current_duration * 1000:.1f}ms, got {tr_values[t] * 1000:.1f}ms")
-
-    # Track end of Phase 2
+    # print("=== PHASE 2: MRF Time Series ===")
+    #
+    # rf_phase = 0
+    # rf_inc = 0
+    #
+    # seq.add_block(rf180_inversion)
+    # inversion_time = pp.calc_duration(rf180_inversion)
+    # fat_null_time = pp.calc_duration(rf_fs, gz_fs)
+    # additional_time = TI / 1000 - inversion_time - fat_null_time
+    # seq.add_block(rf180_inversion)
+    # if additional_time < 0:
+    #     print("make sure that fat nulling + inversion is shorter than 50ms")
+    # else:
+    #     seq.add_block(pp.make_delay(additional_time))
+    #
+    # for t in range(len(flip_angles)):
+    #     print(f"MRF time point {t + 1}/{len(flip_angles)}: FA={flip_angles[t]}°, TR={tr_values[t] * 1000:.0f}ms")
+    #     seq.add_block(rf_fs, gz_fs)
+    #     # RF spoiling
+    #     rf_pulses[t].phase_offset = rf_phase / 180 * np.pi
+    #     adc.phase_offset = rf_phase / 180 * np.pi
+    #     rf_inc = divmod(rf_inc + rf_spoiling_inc, 360.0)[1]
+    #     rf_phase = divmod(rf_phase + rf_inc, 360.0)[1]
+    #
+    #     # Excitation
+    #     seq.add_block(rf_pulses[t], gz_list[t])
+    #
+    #     # Pre-phasing for accelerated acquisition (every R-th line)
+    #     gp_pre = pp.make_trapezoid(channel='y', area=(-(Nphase // 2)) / fov, system=system)
+    #     seq.add_block(gx_pre, gp_pre, gz_reph_list[t])
+    #
+    #     # Adding delay for proper TE
+    #     # if fourier_factor == 1:
+    #     #     # time_to_kspace_center = (((((Nphase_in_practice // 4) - 1) *
+    #     #     #                            pp.calc_duration(gx, adc) +
+    #     #     #                            pp.calc_duration(gx_, adc) +
+    #     #     #                            2 * pp.calc_duration(gp_blip)) +
+    #     #     #                           pp.calc_duration(gx, adc)) +
+    #     #     #                          pp.calc_duration(gp_blip))
+    #     #     term_1 = pp.calc_duration(gx, adc) + pp.calc_duration(gx_, adc) + 2 * pp.calc_duration(gp_blip)
+    #     #     term_2 = pp.calc_duration(gx, adc) + pp.calc_duration(gp_blip) + 0.5 * pp.calc_duration(gx, adc)
+    #     #     time_to_kspace_center = ((Nphase_in_practice // 4) - 1) * term_1 + term_2
+    #     #     if time_to_kspace_center < TE:
+    #     #         additional_time_to_TE = TE - time_to_kspace_center
+    #     #         seq.add_block(pp.make_delay(additional_time_to_TE))
+    #     #     else:
+    #     #         raise "TE is too short!"
+    #     # else:
+    #     #     raise NotImplementedError(f"fourier factor {fourier_factor} TE proper calculation not implemented")
+    #
+    #     # seq.add_block(pp.make_delay(9.7 / 1000))  # custom delay only for 36X36 matrix to have echo time = 18ms
+    #
+    #     # Single-shot EPI readout (accelerated by R)
+    #     for ii in range(0, Nphase_in_practice // 2):
+    #         seq.add_block(gx, adc)
+    #         seq.add_block(gp_blip)
+    #         seq.add_block(gx_, adc)
+    #         seq.add_block(gp_blip)
+    #
+    #     # Spoiling
+    #     gy_spoil = pp.make_trapezoid(channel='y', area=4 * (-Nphase_in_practice * R) / fov, system=system)
+    #     seq.add_block(gx_spoil, gy_spoil, gz_spoil)
+    #
+    #     # TR timing
+    #     current_duration = (pp.calc_duration(rf_pulses[t], gz_list[t]) +
+    #                         pp.calc_duration(gx_pre, gp_pre, gz_reph_list[t]) +
+    #                         Nphase_in_practice // 2 * (pp.calc_duration(gx, adc) +
+    #                                                    pp.calc_duration(gp_blip) +
+    #                                                    pp.calc_duration(gx_, adc) +
+    #                                                    pp.calc_duration(gp_blip)) +
+    #                         pp.calc_duration(gx_spoil, gy_spoil, gz_spoil))
+    #
+    #     tr_delay = tr_values[t] - current_duration
+    #     if tr_delay > 0:
+    #         seq.add_block(pp.make_delay(tr_delay))
+    #     else:
+    #         print(
+    #             f"Warning: TR {t + 1} too short! Need {current_duration * 1000:.1f}ms, got {tr_values[t] * 1000:.1f}ms")
+    #
+    # # Track end of Phase 2
     phase2_end_time = seq.duration()[0]
     phase2_duration = phase2_end_time - phase2_start_time
 
