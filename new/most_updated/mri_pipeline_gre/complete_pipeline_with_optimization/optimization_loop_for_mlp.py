@@ -170,14 +170,20 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
 
 
 # ===== SETUP PARAMETERS =====
-seq_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/gre_epi_72.seq"
-phantom_path = r"/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
-output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_1"
-#
-# seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\12.8.24\72\epi_gre_mrf_epi.seq"
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_36.seq"
+# seq_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/gre_epi_72.seq"
+# phantom_path = r"/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
+# output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_1"
+# #
+# # seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\12.8.24\72\epi_gre_mrf_epi.seq"
+# seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_108.seq"
+# phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\numerical_brain_cropped.mat"
+# output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\14.8.24\108\run_1"
+
+
+seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\test\epi_gre_mrf_epi_108_half.seq"
 phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\12.8.24\72\run_1"
+output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\test\108\run_2"
+
 epochs = 10000
 
 # ===== CREATE OUTPUT FOLDERS =====
