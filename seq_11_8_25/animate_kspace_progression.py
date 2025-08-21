@@ -6,7 +6,7 @@ import MRzeroCore as mr0
 import torch
 
 # ---------------- Load Sequence & Phantom ----------------
-seq_file = r"gre_epi_36.seq"
+seq_file = r"gre_epi_96_half.seq"
 seq0 = mr0.Sequence.import_file(seq_file)
 obj_p = mr0.VoxelGridPhantom.load_mat("numerical_brain_cropped.mat")
 obj_p = obj_p.build()
@@ -50,12 +50,7 @@ anim = animation.FuncAnimation(
 )
 
 # ---------------- Save as GIF ----------------
-gif_path = 'kspace_trajectory_inversion.gif'
+gif_path = 'gre_epi_96_half.gif'
 anim.save(gif_path, writer='pillow', fps=20)
 print(f"GIF saved to {gif_path}")
 
-# ---------------- Convert GIF to MP4 ----------------
-mp4_path = 'kspace_trajectory.mp4'
-gif_data = imageio.mimread(gif_path)
-imageio.mimsave(mp4_path, gif_data, fps=20)
-print(f"MP4 saved to {mp4_path}")

@@ -35,7 +35,7 @@ def mrf_epi_sequence():
     TI = 50
     assert Nread % 2 == 0 and Nread % R == 0
 
-    seq_filename = f"epi_gre_mrf_epi_{Nread}_half.seq"
+    seq_filename = f"test_epi_gre_mrf_epi_{Nread}_half.seq"
 
     # Partial Fourier
     fourier_factor = 9 / 16

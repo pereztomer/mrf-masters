@@ -173,20 +173,14 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
 # seq_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/gre_epi_72.seq"
 # phantom_path = r"/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
 # output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_1"
-# #
-# # seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\12.8.24\72\epi_gre_mrf_epi.seq"
-# seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_108.seq"
+
+# seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_128_fourier_factor_0.875.seq"
 # phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\numerical_brain_cropped.mat"
-# output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\14.8.24\108\run_1"
+# output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\128\half_0.875\run_1"
 
-
-# seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_108.seq"
-# phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\numerical_brain_cropped.mat"
-# output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\108\run_1"
-
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_192_fourier_factor_1.seq"
+seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_108_fourier_factor_1.seq"
 phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\192\full\run_1"
+output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\108\half_1\run_1"
 
 epochs = 10000
 
@@ -308,7 +302,6 @@ if plot:
     display_time_series_shots(time_series_shots, flip_angles,
                               save_path=os.path.join(plots_output_path, 'time_series_shots.png'))
 
-exit()
 # ===== DEFINE NETWORK =====
 from mlp import create_simple_mlp
 
@@ -399,23 +392,6 @@ for iteration in range(epochs):
 
     # Calculate masked loss (only for brain regions)
     mask_expanded = mask.unsqueeze(0).expand_as(time_series_shots)  # Shape: (50, 36, 36)
-
-    # Calculate normalized loss using quantiles
-    # relative_loss = 0
-    # for t in range(len(time_series_shots)):
-    #     # Extract masked pixels for this time point
-    #     real_t = time_series_shots[t][mask]  # Shape: (num_masked_pixels,)
-    #     sim_t = sim_images_batch.squeeze()[t][mask]  # Shape: (num_masked_pixels,)
-    #
-    #     mse_loss = F.mse_loss(real_t, sim_t)
-    #
-    #     mean = torch.mean(real_t)
-    #
-    #     relative_loss += mse_loss/mean
-    #
-    # # Average across time points
-    # per_pixel_loss = relative_loss / len(time_series_shots)
-    # image_loss = per_pixel_loss
 
     image_loss = F.mse_loss(time_series_shots[mask_expanded], sim_images_batch.squeeze()[mask_expanded])
 
