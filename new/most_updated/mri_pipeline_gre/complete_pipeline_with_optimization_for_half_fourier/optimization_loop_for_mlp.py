@@ -170,17 +170,9 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
 
 
 # ===== SETUP PARAMETERS =====
-# seq_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/gre_epi_72.seq"
-# phantom_path = r"/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
-# output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_1"
-
-# seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_128_fourier_factor_0.875.seq"
-# phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\numerical_brain_cropped.mat"
-# output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\128\half_0.875\run_1"
-
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_108_fourier_factor_1.seq"
-phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\108\half_1\run_1"
+seq_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/gre_epi_72_fourier_factor_1.seq"
+phantom_path = r"/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
+output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_4"
 
 epochs = 10000
 
@@ -409,6 +401,7 @@ for iteration in range(epochs):
     # Backward pass
     image_loss.backward()
     # check_gradients(model, image_loss)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
     optimizer.step()
     scheduler.step()

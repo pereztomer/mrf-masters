@@ -100,11 +100,16 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
 
 
 # ===== SETUP PARAMETERS =====
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_108_fourier_factor_1.seq"
-phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\108\half_1\run_1"
 
-epochs = 150
+seq_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/gre_epi_72_fourier_factor_1.seq"
+phantom_path = r"/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
+output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_2"
+
+# seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_108_fourier_factor_1.seq"
+# phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\numerical_brain_cropped.mat"
+# output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\108\half_1\run_1"
+
+epochs = 1000
 
 # ===== CREATE OUTPUT FOLDERS =====
 plots_output_path = os.path.join(output_path, 'plots')
@@ -167,8 +172,8 @@ model = create_3d_unet_mri(
 
 model = model.to("cuda")
 # ===== OPTIMIZATION SETUP =====
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.99)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
 
 # ===== normelize images ========
 n_valid = mask.sum()

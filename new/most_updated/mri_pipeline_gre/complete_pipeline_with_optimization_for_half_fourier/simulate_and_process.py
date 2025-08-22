@@ -169,7 +169,7 @@ def simulate_and_process_mri(obj_p, seq_file_path, num_coils, grappa_weights_tor
     seq_mr0 = mr0.Sequence.import_file(seq_file_path)
 
     # MR operations
-    graph = mr0.compute_graph(seq_mr0.cuda(), obj_p.cuda(), 100, 1e-3)
+    graph = mr0.compute_graph(seq_mr0.cuda(), obj_p.cuda(), 40, 1e-3)
     signal = mr0.execute_graph(graph, seq_mr0.cuda(), obj_p.cuda(), print_progress=True)
 
     calibration_img_sos, time_series_shots, grappa_weights_torch = preprocess_raw_data(seq_pulseq, signal, R, Nx,

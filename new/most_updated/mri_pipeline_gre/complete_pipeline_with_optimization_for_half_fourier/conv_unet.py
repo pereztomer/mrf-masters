@@ -77,6 +77,7 @@ class UNet3D(nn.Module):
         self.up4 = Up3D(features[1], features[0], scale_factor=(2, 1, 1), bilinear=bilinear)  # 25→50, 36→36
 
         self.outc = nn.Conv3d(features[0], out_ch, 1)
+        self.final_relu = nn.ReLU(inplace=True)  # Added final ReLU
 
         # Global average pooling over time dimension to get single parameter maps
         self.global_pool = nn.AdaptiveAvgPool3d((1, None, None))
@@ -97,6 +98,7 @@ class UNet3D(nn.Module):
         x = self.up4(x, x1)  # [B, F0, 50, 36, 36]
 
         x = self.outc(x)  # [B, out_ch, 50, 36, 36]
+        x = self.final_relu(x)  # Apply ReLU to ensure positive outputs
 
         # Pool over time dimension to get single parameter maps
         x = self.global_pool(x)  # [B, out_ch, 1, 36, 36]

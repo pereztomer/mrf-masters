@@ -30,7 +30,7 @@ def mrf_epi_sequence():
     # Imaging parameters
     fov = 220e-3
     slice_thickness = 8e-3
-    Nread = Nphase = 108
+    Nread = Nphase = 36
     TE = 18 / 1000  # 18MS
     R = 3
     TI = 50
@@ -155,23 +155,31 @@ def mrf_epi_sequence():
         seq.add_block(rf_pulses[0], gz_list[0])
 
         # Pre-phasing for this shot
-        # gp_pre = pp.make_trapezoid(channel='y', area=(-(Nphase // 2) + i) / fov, system=system)
         gp_pre = pp.make_trapezoid(channel='y', area=(-Nphase * (fourier_factor - 0.5) + i) / fov, system=system)
 
         # Adding delay for proper TE
         seq.add_block(gx_pre, gp_pre, gz_reph_list[0])
-        lines_to_center = int(abs(gp_pre.area * fov) / R)  # Convert area back to number of lines
+
+        number_of_y_blips_to_center = round(abs(gp_pre.area) / gp_blip.area)
+
         epi_step_time = (pp.calc_duration(gx, adc)
                          + pp.calc_duration(gp_blip)
                          + pp.calc_duration(gx_, adc)
                          + pp.calc_duration(gp_blip))
 
-        time_to_echo = (pp.calc_duration(gx_pre, gp_pre, gz_reph_list[0])
-                        + (lines_to_center / 2) * epi_step_time
-                        - pp.calc_duration(gx_, adc) / 2
-                        - pp.calc_duration(gp_blip))
+        if number_of_y_blips_to_center % 2 == 0:
+            term_2 = number_of_y_blips_to_center / 2 * epi_step_time
+            term_2 += pp.calc_duration(gx_, adc) / 2
 
-        te_delay = max(0, TE - time_to_echo)
+        if number_of_y_blips_to_center % 2 == 1:
+            term_2 = (number_of_y_blips_to_center - 1) / 2 * epi_step_time
+            term_2 += pp.calc_duration(gp_blip) + pp.calc_duration(gx_, adc) + pp.calc_duration(gx_pre, adc) / 2
+
+        term_2 = term_2 + pp.calc_duration(rf_pulses[0], gz_list[0]) / 2 + pp.calc_duration(gx_pre, gp_pre,
+                                                                                            gz_reph_list[0])
+
+        print(f"time to echo: {term_2}")
+        te_delay = round(max(0, TE - term_2), 3)
         if te_delay > 0:
             seq.add_block(pp.make_delay(te_delay))
 
@@ -242,18 +250,25 @@ def mrf_epi_sequence():
         gp_pre = pp.make_trapezoid(channel='y', area=(-(Nphase // 2)) / fov, system=system)
         seq.add_block(gx_pre, gp_pre, gz_reph_list[t])
 
-        lines_to_center = int(abs(gp_pre.area * fov) / R)  # Convert area back to number of lines
+        number_of_y_blips_to_center = round(abs(gp_pre.area) / gp_blip.area)
+
         epi_step_time = (pp.calc_duration(gx, adc)
                          + pp.calc_duration(gp_blip)
                          + pp.calc_duration(gx_, adc)
                          + pp.calc_duration(gp_blip))
 
-        time_to_echo = (pp.calc_duration(gx_pre, gp_pre, gz_reph_list[0])
-                        + (lines_to_center / 2) * epi_step_time
-                        - pp.calc_duration(gx_, adc) / 2
-                        - pp.calc_duration(gp_blip))
+        if number_of_y_blips_to_center % 2 == 0:
+            term_2 = number_of_y_blips_to_center / 2 * epi_step_time
+            term_2 += pp.calc_duration(gx_, adc) / 2
 
-        te_delay = max(0, TE - time_to_echo)
+        if number_of_y_blips_to_center % 2 == 1:
+            term_2 = (number_of_y_blips_to_center - 1) / 2 * epi_step_time
+            term_2 += pp.calc_duration(gp_blip) + pp.calc_duration(gx_, adc) + pp.calc_duration(gx_pre, adc) / 2
+
+        term_2 = term_2 + pp.calc_duration(rf_pulses[0], gz_list[0]) / 2 + pp.calc_duration(gx_pre, gp_pre,
+                                                                                            gz_reph_list[0])
+
+        te_delay = round(max(0, TE - term_2), 3)
         if te_delay > 0:
             seq.add_block(pp.make_delay(te_delay))
 
