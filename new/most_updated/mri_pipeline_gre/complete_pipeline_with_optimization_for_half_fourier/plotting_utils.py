@@ -180,3 +180,51 @@ def display_time_series_shots(time_series_shots, flip_angles, grid_size=(5, 10),
     else:
         plt.show()
 
+
+
+def plot_calibration_image_vs_first_time_step(calibration_data, time_series_shots, plots_output_path):
+    # Min/max for consistent grayscale scaling
+    img_min = min(img.min() for img in time_series_shots)
+    img_max = max(img.max() for img in time_series_shots)
+
+    # Convert to numpy
+    calib_img = calibration_data.squeeze().numpy()
+    time_img = time_series_shots[0].detach().cpu().squeeze().numpy()
+    diff_img = calib_img - time_img
+
+    # Avoid divide-by-zero: add small epsilon where calib_img == 0
+    epsilon = 1e-8
+    norm_diff_img = diff_img / (calib_img + epsilon)
+
+    # Create subplot with 4 images
+    fig, axes = plt.subplots(1, 4, figsize=(24, 6))
+
+    # Calibration data
+    # im1 = axes[0].imshow(calib_img, cmap='gray', vmin=img_min, vmax=img_max)
+    im1 = axes[0].imshow(calib_img, cmap='gray')
+    axes[0].set_title('Calibration Data')
+    axes[0].axis('off')
+    plt.colorbar(im1, ax=axes[0], fraction=0.046, pad=0.04)
+
+    # Time series first shot
+    # im2 = axes[1].imshow(time_img, cmap='gray', vmin=img_min, vmax=img_max)
+    im2 = axes[1].imshow(time_img, cmap='gray')
+    axes[1].set_title('Time Series Shot [0]')
+    axes[1].axis('off')
+    plt.colorbar(im2, ax=axes[1], fraction=0.046, pad=0.04)
+
+    # Absolute difference
+    im3 = axes[2].imshow(diff_img, cmap='RdBu_r')
+    axes[2].set_title('Difference (Calib - Time[0])')
+    axes[2].axis('off')
+    plt.colorbar(im3, ax=axes[2], fraction=0.046, pad=0.04)
+
+    # Normalized difference
+    im4 = axes[3].imshow(norm_diff_img, cmap='RdBu_r')
+    axes[3].set_title('Normalized Diff ((Calib - Time[0]) / Calib)')
+    axes[3].axis('off')
+    plt.colorbar(im4, ax=axes[3], fraction=0.046, pad=0.04)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_output_path, 'calibration image vs first time step.png'), dpi=150,
+                bbox_inches='tight')
