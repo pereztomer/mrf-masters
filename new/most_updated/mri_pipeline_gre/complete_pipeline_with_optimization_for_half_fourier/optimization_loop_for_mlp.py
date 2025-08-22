@@ -13,76 +13,10 @@ from simulate_and_process import simulate_and_process_mri
 from plotting_utils import *
 import os
 
+import wandb
+wandb.login(key="7573cbc6e943326835b588046bf1ee71f3f43408")
 
-# def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
-#                           t1_pred, t2_pred, pd_pred, real_batch, sim_batch, plots_path):
-#     from mpl_toolkits.axes_grid1 import make_axes_locatable
-#     """Short plotting function for training visualization."""
-#     # Main plot
-#     fig, axes = plt.subplots(4, 4, figsize=(20, 16))
-#
-#     # Maps (rows 1-2) with shared colorbars
-#     maps = [(T1_gt, t1_pred, 'T1'), (T2_gt, t2_pred, 'T2'), (PD_gt, pd_pred, 'PD')]
-#     for i, (gt, pred, name) in enumerate(maps):
-#         gt_np, pred_np = gt.cpu().numpy(), pred.detach().cpu().numpy()
-#         vmin, vmax = min(gt_np.min(), pred_np.min()), max(gt_np.max(), pred_np.max())
-#
-#         # Ground truth
-#         im1 = axes[0, i].imshow(gt_np, cmap='viridis', vmin=vmin, vmax=vmax)
-#         axes[0, i].set_title(f'GT {name}')
-#         axes[0, i].axis('off')
-#
-#         # Prediction (same scale as GT)
-#         im2 = axes[1, i].imshow(pred_np, cmap='viridis', vmin=vmin, vmax=vmax)
-#         axes[1, i].set_title(f'Pred {name}')
-#         axes[1, i].axis('off')
-#
-#         # Single colorbar for both GT and Pred (shared scale)
-#         plt.colorbar(im1, ax=[axes[0, i], axes[1, i]], fraction=0.046, pad=0.04)
-#
-#     # Images (rows 3-4) with shared colorbars
-#     real_imgs = real_batch.squeeze().detach().cpu().numpy()
-#     sim_imgs = sim_batch.squeeze().detach().cpu().numpy()
-#     vmin, vmax = min(real_imgs.min(), sim_imgs.min()), max(real_imgs.max(), sim_imgs.max())
-#
-#     for t in range(4):
-#         # Real images
-#         im3 = axes[2, t].imshow(real_imgs[t * 5], cmap='gray', vmin=vmin, vmax=vmax)
-#         axes[2, t].set_title(f'Real t={t}')
-#         axes[2, t].axis('off')
-#
-#         # Simulated images (same scale as real)
-#         im4 = axes[3, t].imshow(sim_imgs[t * 5], cmap='gray', vmin=vmin, vmax=vmax)
-#         axes[3, t].set_title(f'Sim t={t}')
-#         axes[3, t].axis('off')
-#
-#         # Create colorbar for image pair
-#         divider = make_axes_locatable(axes[3, t])
-#         cax = divider.append_axes("right", size="5%", pad=0.05)
-#         plt.colorbar(im3, cax=cax)
-#
-#     # Hide unused subplots
-#     axes[0, 3].axis('off')
-#     axes[1, 3].axis('off')
-#
-#     plt.tight_layout()
-#     os.makedirs(f"{plots_path}/iterations", exist_ok=True)
-#     plt.savefig(f"{plots_path}/iterations/iter_{iteration:04d}.png", dpi=150, bbox_inches='tight')
-#     plt.close()
-#
-#     # Enhanced Loss plots
-#     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-#
-#     # Full loss curve (log scale)
-#     axes[0].semilogy(losses)
-#     axes[0].set_title(f'Full Loss Curve (Iter {iteration + 1}/{epochs})')
-#     axes[0].set_xlabel('Iteration')
-#     axes[0].set_ylabel('Loss (log scale)')
-#     axes[0].grid(True, alpha=0.3)
-#
-#     plt.tight_layout()
-#     plt.savefig(f"{plots_path}/loss_curve.png", dpi=150, bbox_inches='tight')
-#     plt.close()
+
 def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
                           t1_pred, t2_pred, pd_pred, real_batch, sim_batch, plots_path,
                           t1_losses, t2_losses, pd_losses):
@@ -170,10 +104,13 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
 
 
 # ===== SETUP PARAMETERS =====
-seq_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/gre_epi_72_fourier_factor_1.seq"
-phantom_path = r"/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
-output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_4"
+# seq_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/gre_epi_72_fourier_factor_1.seq"
+# phantom_path = r"/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
+# output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_5"
 
+seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_36_fourier_factor_1.seq"
+phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\numerical_brain_cropped.mat"
+output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_36_fourier_factor_1"
 epochs = 10000
 
 # ===== CREATE OUTPUT FOLDERS =====
@@ -194,6 +131,34 @@ num_coils = 34
 # ===== PLOTTING FLAG =====
 plot = True
 
+model_size = "huge+"
+learning_rate = 0.0001
+wandb.init(
+    project="mri-t1-t2-pd-mapping",
+    name=f"gre_epi_run_{int(time.time())}",
+    config={
+        "epochs": epochs,
+        "learning_rate": learning_rate,
+        "weight_decay": 0,
+        "Nx": Nx,
+        "Ny": Ny,
+        "num_coils": num_coils,
+        "model_size": model_size,
+        "seq_path": seq_path,
+        "phantom_path": phantom_path,
+    }
+)
+
+
+seq_artifact = wandb.Artifact("sequence_file", type="sequence")
+seq_artifact.add_file(seq_path)
+wandb.log_artifact(seq_artifact)
+# Log phantom file as artifact
+phantom_artifact = wandb.Artifact("phantom_file", type="phantom")
+phantom_artifact.add_file(phantom_path)
+wandb.log_artifact(phantom_artifact)
+
+
 # ===== PREPARE PHANTOM =====
 phantom, coil_maps = phantom_creator.create_phantom(Nx, Ny, phantom_path, num_coils=num_coils)
 coil_maps = coil_maps.to("cuda")
@@ -210,6 +175,7 @@ PD_ground_truth = phantom.PD.squeeze().to("cuda")
 # ===== CREATE MASK AND GROUND TRUTH =====
 # mask = calibration_data > 150
 mask = T1_ground_truth > 0
+mask = torch.rot90(mask, k=-1, dims=[0, 1])  # For 90 degree clockwise rotation
 mask = mask.to("cuda")
 
 # Calculate normalization parameters
@@ -233,7 +199,7 @@ stds = torch.std(masked_reshaped, dim=1, keepdim=True)
 normalized_time_series = (masked_reshaped - means) / (stds + 1e-8)
 
 # Transpose to get (num_pixels, time_steps) format
-pixel_time_series = normalized_time_series.transpose(0, 1).to("cuda")  # Shape: (665, 50)
+pixel_time_series = normalized_time_series.transpose(0, 1).to("cuda")  # Shape: (batch_size, 50)
 
 # Get spatial indices for reconstruction
 masked_indices = torch.where(mask)
@@ -300,18 +266,12 @@ from mlp import create_simple_mlp
 model = create_simple_mlp(
     input_features=time_steps_number,  # 50 time steps
     output_features=3,  # T1, T2, PD
-    model_size="huge+"
+    model_size=model_size
 )
 model = model.to("cuda")
 
 # ===== OPTIMIZATION SETUP =====
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.99)
-
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.01)  # Higher LR
-# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)  # Less aggressive
-
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0001, weight_decay=0)
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0)
 
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
 
@@ -350,10 +310,9 @@ for iteration in range(epochs):
     t2_predicted = t2_predicted * t2_std + t2_mean
     pd_predicted = pd_predicted * pd_std + pd_mean
 
-    # Apply mask
-    t1_predicted = t1_predicted * mask.float()
-    t2_predicted = t2_predicted * mask.float()
-    pd_predicted = pd_predicted * mask.float()
+    t1_predicted = torch.rot90(t1_predicted, k=1, dims=[0, 1])  # For 90 degree counter-clockwise rotation
+    t2_predicted = torch.rot90(t2_predicted, k=1, dims=[0, 1])  # For 90 degree counter-clockwise rotation
+    pd_predicted = torch.rot90(pd_predicted, k=1, dims=[0, 1])  # For 90 degree counter-clockwise rotation
 
     current_t1_loss = F.mse_loss(t1_predicted, T1_ground_truth)
     current_t2_loss = F.mse_loss(t2_predicted, T2_ground_truth)
@@ -387,29 +346,23 @@ for iteration in range(epochs):
 
     image_loss = F.mse_loss(time_series_shots[mask_expanded], sim_images_batch.squeeze()[mask_expanded])
 
-
-    def check_gradients(model, loss):
-        print(f"Loss requires grad: {loss.requires_grad}")
-        for name, param in model.named_parameters():
-            if param.grad is not None:
-                grad_norm = param.grad.norm().item()
-                print(f"{name}: grad_norm = {grad_norm:.8f}")
-            else:
-                print(f"{name}: NO GRADIENT!")
-
+    wandb.log({
+        "iteration": iteration,
+        "total_loss": image_loss.item(),
+        "t1_loss": current_t1_loss.item(),
+        "t2_loss": current_t2_loss.item(),
+        "pd_loss": current_pd_loss.item(),
+        "learning_rate": scheduler.get_last_lr()[0],
+    })
 
     # Backward pass
     image_loss.backward()
-    # check_gradients(model, image_loss)
-    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
     optimizer.step()
     scheduler.step()
     # Track loss
     losses.append(image_loss.item())
-    if iteration % 100 == 0:
-        total_grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), float('inf'))
-        print(f"Grad norm: {total_grad_norm:.6f}")
 
     # Progress
     print(f"Iteration {iteration}: Loss = {image_loss.item():.8f}")
@@ -420,12 +373,14 @@ for iteration in range(epochs):
             best_t2_loss < best_loos or
             best_pd_loss < best_pd_loss or
             image_loss < best_loos):
-        # iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
-        # t1_pred, t2_pred, pd_pred, real_batch, sim_batch, plots_path,
-        # t1_losses, t2_losses, pd_losses
         plot_training_results(iteration, epochs, losses, T1_ground_truth, T2_ground_truth, PD_ground_truth,
                               t1_predicted, t2_predicted, pd_predicted, time_series_shots, sim_images_batch,
                               plots_output_path, t1_losses, t2_losses, pd_losses)
+        wandb.log({
+            "training_results": wandb.Image(f"{plots_output_path}/iterations/iter_{iteration:04d}.png"),
+            "loss_curves": wandb.Image(f"{plots_output_path}/loss_curve.png"),
+        })
+
 
     if current_t1_loss < best_t1_loss:
         best_t1_loss = current_t1_loss
@@ -441,6 +396,7 @@ for iteration in range(epochs):
         print(f"Converged at iteration {iteration}")
         break
 
+wandb.finish()
 # ===== FINAL RESULTS =====
 total_time = time.time() - start_time
 print(f"Training complete! Total time: {total_time:.2f} seconds")
@@ -450,11 +406,3 @@ print(f"Final loss: {losses[-1]:.8f}")
 plot_training_results(iteration, epochs, losses, T1_ground_truth, T2_ground_truth, PD_ground_truth,
                       t1_predicted, t2_predicted, pd_predicted, time_series_shots, sim_images_batch, plots_output_path)
 
-# ===== SAVE MODEL =====
-model_save_path = os.path.join(models_output_path, 'best_t1_t2_pd_mapping_model.pth')
-torch.save({
-    'model_state_dict': model.state_dict(),
-    'optimizer_state_dict': optimizer.state_dict(),
-    'final_loss': losses[-1],
-}, model_save_path)
-print(f"Model saved to '{model_save_path}'")
