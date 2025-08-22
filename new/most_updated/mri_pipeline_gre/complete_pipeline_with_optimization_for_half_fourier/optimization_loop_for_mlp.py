@@ -132,7 +132,7 @@ plot = True
 model_size = "huge+"
 learning_rate = 0.0001
 wandb.init(
-    project="mri-t1-t2-pd-mapping",
+    project="mrf",
     name=f"gre_epi_run_{int(time.time())}",
     notes="initial 36X36 trail, fully sampled, trying to reproduce the best results for 36X36 (that was around loss of 3)",
     config={

@@ -5,6 +5,7 @@ import numpy as np
 # matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import torch
+import os
 
 def plot_phantom(phantom, num_sens_to_show=4, save_path=None):
     total_plots = 4 + num_sens_to_show
