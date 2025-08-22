@@ -1,9 +1,6 @@
-# main_training.py
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
 import numpy as np
 import MRzeroCore as mr0
 import phantom_creator
@@ -12,8 +9,10 @@ import pypulseq as pp
 from simulate_and_process import simulate_and_process_mri
 from plotting_utils import *
 import os
+import matplotlib.pyplot as plt
 
 import wandb
+
 wandb.login(key="7573cbc6e943326835b588046bf1ee71f3f43408")
 
 
@@ -108,16 +107,15 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
 # phantom_path = r"/home/tomer.perez/workspace/data/numerical_brain_cropped.mat"
 # output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_5"
 
-seq_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_36_fourier_factor_1.seq"
-phantom_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\numerical_brain_cropped.mat"
-output_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\seq_11_8_25\gre_epi_36_fourier_factor_1"
+phantom_path = r"C:\Users\perez\Desktop\mrf_runs\numerical_brain_cropped.mat"
+main_folder_path = r"C:\Users\perez\Desktop\mrf_runs\gre_epi_36_fourier_factor_1"
+seq_path = os.path.join(main_folder_path, "gre_epi_36_fourier_factor_1.seq")
+output_path = os.path.join(main_folder_path, "run_1")
 epochs = 10000
 
 # ===== CREATE OUTPUT FOLDERS =====
 plots_output_path = os.path.join(output_path, 'plots')
-models_output_path = os.path.join(output_path, 'models')
 os.makedirs(plots_output_path, exist_ok=True)
-os.makedirs(models_output_path, exist_ok=True)
 
 # ===== READ SEQUENCE =====
 seq_pulseq = pp.Sequence()
@@ -136,6 +134,7 @@ learning_rate = 0.0001
 wandb.init(
     project="mri-t1-t2-pd-mapping",
     name=f"gre_epi_run_{int(time.time())}",
+    notes="initial 36X36 trail, fully sampled, trying to reproduce the best results for 36X36 (that was around loss of 3)",
     config={
         "epochs": epochs,
         "learning_rate": learning_rate,
@@ -149,7 +148,6 @@ wandb.init(
     }
 )
 
-
 seq_artifact = wandb.Artifact("sequence_file", type="sequence")
 seq_artifact.add_file(seq_path)
 wandb.log_artifact(seq_artifact)
@@ -157,7 +155,6 @@ wandb.log_artifact(seq_artifact)
 phantom_artifact = wandb.Artifact("phantom_file", type="phantom")
 phantom_artifact.add_file(phantom_path)
 wandb.log_artifact(phantom_artifact)
-
 
 # ===== PREPARE PHANTOM =====
 phantom, coil_maps = phantom_creator.create_phantom(Nx, Ny, phantom_path, num_coils=num_coils)
@@ -208,9 +205,6 @@ masked_cols = masked_indices[1]
 
 if plot:
     plot_phantom(phantom, save_path=os.path.join(plots_output_path, 'phantom.png'))
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import os
 
     # Min/max for consistent grayscale scaling
     img_min = min(img.min() for img in time_series_shots)
@@ -368,10 +362,9 @@ for iteration in range(epochs):
     print(f"Iteration {iteration}: Loss = {image_loss.item():.8f}")
 
     # Plot results
-    if (iteration % 50 == 0 or
-            current_t1_loss < best_t1_loss or
-            best_t2_loss < best_loos or
-            best_pd_loss < best_pd_loss or
+    if (current_t1_loss < best_t1_loss or
+            current_t2_loss < best_t2_loss or
+            current_pd_loss < best_pd_loss or
             image_loss < best_loos):
         plot_training_results(iteration, epochs, losses, T1_ground_truth, T2_ground_truth, PD_ground_truth,
                               t1_predicted, t2_predicted, pd_predicted, time_series_shots, sim_images_batch,
@@ -380,7 +373,6 @@ for iteration in range(epochs):
             "training_results": wandb.Image(f"{plots_output_path}/iterations/iter_{iteration:04d}.png"),
             "loss_curves": wandb.Image(f"{plots_output_path}/loss_curve.png"),
         })
-
 
     if current_t1_loss < best_t1_loss:
         best_t1_loss = current_t1_loss
@@ -391,18 +383,28 @@ for iteration in range(epochs):
     if image_loss < best_loos:
         best_loos = image_loss
 
+    if image_loss < best_loos:
+        maps_output_path = os.path.join(output_path, 'maps')
+        os.makedirs(maps_output_path, exist_ok=True)
+
+        # Save locally
+        np.save(os.path.join(maps_output_path, f'T1_best_iter_{iteration:04d}.npy'),
+                t1_predicted.detach().cpu().numpy())
+        np.save(os.path.join(maps_output_path, f'T2_best_iter_{iteration:04d}.npy'),
+                t2_predicted.detach().cpu().numpy())
+        np.save(os.path.join(maps_output_path, f'PD_best_iter_{iteration:04d}.npy'),
+                pd_predicted.detach().cpu().numpy())
+
+        # Log to wandb
+        wandb.log({
+            "T1_best_map": wandb.Image(t1_predicted.detach().cpu().numpy()),
+            "T2_best_map": wandb.Image(t2_predicted.detach().cpu().numpy()),
+            "PD_best_map": wandb.Image(pd_predicted.detach().cpu().numpy()),
+        })
+
     # Early stopping
     if image_loss.item() < 1e-7:
         print(f"Converged at iteration {iteration}")
         break
 
 wandb.finish()
-# ===== FINAL RESULTS =====
-total_time = time.time() - start_time
-print(f"Training complete! Total time: {total_time:.2f} seconds")
-print(f"Final loss: {losses[-1]:.8f}")
-
-# ===== PLOT & SAVE LOSS CURVE =====
-plot_training_results(iteration, epochs, losses, T1_ground_truth, T2_ground_truth, PD_ground_truth,
-                      t1_predicted, t2_predicted, pd_predicted, time_series_shots, sim_images_batch, plots_output_path)
-
