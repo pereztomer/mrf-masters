@@ -108,8 +108,8 @@ def plot_training_results(iteration, epochs, losses, T1_gt, T2_gt, PD_gt,
 # output_path = r"/home/tomer.perez/workspace/runs/gre_epi_72/run_5"
 
 phantom_path = r"C:\Users\perez\Desktop\mrf_runs\numerical_brain_cropped.mat"
-main_folder_path = r"C:\Users\perez\Desktop\mrf_runs\gre_epi_36_fourier_factor_1"
-seq_path = os.path.join(main_folder_path, "gre_epi_36_fourier_factor_1.seq")
+main_folder_path = r"C:\Users\perez\Desktop\mrf_runs\gre_epi_36_from_server_2"
+seq_path = os.path.join(main_folder_path, "epi_gre_mrf_epi.seq")
 output_path = os.path.join(main_folder_path, "run_1")
 epochs = 10000
 
@@ -134,7 +134,7 @@ learning_rate = 0.0001
 wandb.init(
     project="mrf",
     name=f"gre_epi_run_{int(time.time())}",
-    notes="initial 36X36 trail, fully sampled, trying to reproduce the best results for 36X36 (that was around loss of 3)",
+    notes="trying to run new code + old sequence file (the second version)",
     config={
         "epochs": epochs,
         "learning_rate": learning_rate,
