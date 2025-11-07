@@ -309,9 +309,9 @@ def process_images_batch(m0_map, output_dir,seq_len, batch_size=4, l=250, sigma=
 if __name__ == '__main__':
     # this is the full last motion simulation!
     # Single m0_map
-    m0_map_path = r"C:\Users\perez\Desktop\masters\mri_research\code\python\mrf-masters\chaos_ds\m0_map.npy"
+    m0_map_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\chaos_ds\m0_map.npy"
     m0_map = np.load(m0_map_path)
 
-    output_dir = r'C:\Users\perez\Desktop\masters\mri_research\datasets\distortion_dataset_8'
-    process_images_batch(m0_map, output_dir,seq_len=100, batch_size=64, sigma=25)
+    output_dir = r'C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\chaos_ds\distortion_dataset_1'
+    process_images_batch(m0_map, output_dir,seq_len=50, batch_size=64, sigma=25)
 

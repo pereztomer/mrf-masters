@@ -1,0 +1,243 @@
+import MRzeroCore as mr0
+import pypulseq as pp
+import torch
+import eqdist_grappa_cuda
+import numpy as np
+
+
+def combine_coils(kspace_per_coil, sensitivity_maps):
+    calibration_images_per_coil = []
+    for coil in range(kspace_per_coil.shape[-1]):
+        img_coil = torch.fft.ifftshift(torch.fft.fft2(torch.fft.fftshift(kspace_per_coil[:, :, coil])))
+        calibration_images_per_coil.append(img_coil)
+
+    complex_images = torch.stack(calibration_images_per_coil, dim=-1)
+    numerator = torch.sum(complex_images * torch.conj(sensitivity_maps), dim=-1)
+    denominator = torch.sum(torch.abs(sensitivity_maps) ** 2, dim=-1)
+    denominator[denominator < 1e-6] = 1
+    combined = numerator / denominator
+    return combined
+
+
+def preprocess_raw_data(seq, signal, R, Nread, Nphase_in_practice, sensitivity_maps, fourier_factor, time_steps, device,
+                        num_coils, grappa_weights_torch=None, grappa_regularization_factor=0.001):
+    kspace_frequencies = torch.Tensor(seq.calculate_kspace()[0])
+    sensitivity_maps = sensitivity_maps.to(signal.device)
+    shots = []
+    x_freq_per_shot = []
+    y_freq_per_shot = []
+    for index in range(R):
+        single_shot = signal[index * Nread * Nphase_in_practice:(index + 1) * Nread * Nphase_in_practice]
+        kspace_shot = kspace_frequencies[:, index * Nread * Nphase_in_practice:(index + 1) * Nread * Nphase_in_practice]
+
+        x_freq_shot = kspace_shot[0].unsqueeze(1)
+        y_freq_shot = kspace_shot[1].unsqueeze(1)
+        x_freq_shot = torch.reshape(x_freq_shot, (Nphase_in_practice, Nread)).clone().T
+        y_freq_shot = torch.reshape(y_freq_shot, (Nphase_in_practice, Nread)).clone().T
+        x_freq_shot[:, 0::2] = torch.flip(x_freq_shot[:, 0::2], [0])[:, :]
+        y_freq_shot[:, 0::2] = torch.flip(y_freq_shot[:, 0::2], [0])[:, :]
+        expanded_x_freq_per_shot = np.zeros((Nread, Nread), dtype=complex)
+        expanded_x_freq_per_shot[:, index:int(Nread * fourier_factor):R] = x_freq_shot
+
+        expanded_y_freq_per_shot = np.zeros((Nread, Nread), dtype=complex)
+        expanded_y_freq_per_shot[:, index:int(Nread * fourier_factor):R] = y_freq_shot
+        x_freq_per_shot.append(expanded_x_freq_per_shot)
+        y_freq_per_shot.append(expanded_y_freq_per_shot)
+
+        # Initialize tensor with coils as last dimension
+        expanded_kspace_per_shot = torch.zeros((Nread, Nread, num_coils), dtype=torch.complex64)
+        # For each coil
+        for coil in range(num_coils):
+            single_shot_coil = single_shot[:, coil]  # Extract one coil
+            single_shot_coil = torch.reshape(single_shot_coil, (Nphase_in_practice, Nread)).clone().T
+            single_shot_coil[:, 0::2] = torch.flip(single_shot_coil[:, 0::2], [0])[:, :]
+            expanded_kspace_per_shot[:, index: int(Nread * fourier_factor):R, coil] = single_shot_coil
+
+        shots.append(expanded_kspace_per_shot)
+
+    time_series_shots = []
+    time_series_x_freq_per_shot = []
+    time_series_y_freq_per_shot = []
+    for step in range(time_steps):
+        kspace_shot = kspace_frequencies[:,
+                      (R + step) * Nread * Nphase_in_practice: (R + step + 1) * Nread * Nphase_in_practice]
+
+        x_freq_shot = kspace_shot[0].unsqueeze(1)
+        y_freq_shot = kspace_shot[1].unsqueeze(1)
+
+        x_freq_shot = torch.reshape(x_freq_shot, (Nphase_in_practice, Nread)).clone().T
+        y_freq_shot = torch.reshape(y_freq_shot, (Nphase_in_practice, Nread)).clone().T
+
+        x_freq_shot[:, 0::2] = torch.flip(x_freq_shot[:, 0::2], [0])[:, :]
+        y_freq_shot[:, 0::2] = torch.flip(y_freq_shot[:, 0::2], [0])[:, :]
+
+        expanded_x_freq_per_shot = np.zeros((Nread, Nread), dtype=complex)
+        expanded_x_freq_per_shot[:, 0:int(Nread * fourier_factor):R] = x_freq_shot
+
+        expanded_y_freq_per_shot = np.zeros((Nread, Nread), dtype=complex)
+        expanded_y_freq_per_shot[:, 0:int(Nread * fourier_factor):R] = y_freq_shot
+
+        time_series_x_freq_per_shot.append(expanded_x_freq_per_shot)
+        time_series_y_freq_per_shot.append(expanded_y_freq_per_shot)
+
+        expanded_kspace_per_shot = torch.zeros((Nread, Nread, num_coils), dtype=torch.complex64)
+
+        single_shot = signal[(R + step) * Nread * Nphase_in_practice: (R + step + 1) * Nread * Nphase_in_practice]
+        for coil in range(num_coils):
+            single_shot_coil = single_shot[:, coil]  # Extract one coil
+            single_shot_coil = torch.reshape(single_shot_coil, (Nphase_in_practice, Nread)).clone().T
+            single_shot_coil[:, 0::2] = torch.flip(single_shot_coil[:, 0::2], [0])[:, :]
+            expanded_kspace_per_shot[:, 0: int(Nread * fourier_factor):R, coil] = single_shot_coil
+
+        time_series_shots.append(expanded_kspace_per_shot)
+
+    block_size = (4, 4)
+    acc_factors_2d = (1, 3)
+
+    sensitivity_maps = torch.flip(sensitivity_maps, dims=[1])
+    sensitivity_maps = sensitivity_maps.permute(1, 2, 0)
+
+    calibration_data = torch.sum(torch.stack(shots), dim=0)
+    calibration_data = calibration_data.to(signal.device)
+    calibration_images_per_coil = []
+    for coil in range(calibration_data.shape[-1]):
+        img_coil = torch.fft.ifftshift(torch.fft.fft2(torch.fft.fftshift(calibration_data[:, :, coil])))
+        calibration_images_per_coil.append(img_coil)
+
+    calibration_images = torch.stack(calibration_images_per_coil, dim=-1)
+
+    # Now do SENSE combination
+    numerator = torch.sum(calibration_images * torch.conj(sensitivity_maps), dim=-1)
+    denominator = torch.sum(torch.abs(sensitivity_maps) ** 2, dim=-1)
+    denominator[denominator < 1e-6] = 1
+    combined = numerator / denominator
+
+    if grappa_weights_torch is None:
+        grappa_weights_torch = eqdist_grappa_cuda.GRAPPA_calibrate_weights_2d_torch(calibration_data,
+                                                                                    acc_factors_2d,
+                                                                                    device,
+                                                                                    block_size,
+                                                                                    grappa_regularization_factor)
+
+    for time_step in range(time_steps):
+        step = time_series_shots[time_step]
+        kspace_recon_kykxc, image_coilcombined_sos, unmixing_map_coilWise = eqdist_grappa_cuda.GRAPPA_interpolate_imageSpace_2d_torch(
+            step, acc_factors_2d, block_size, grappa_weights_torch, device)
+
+        time_series_shots[time_step] = combine_coils(kspace_recon_kykxc, sensitivity_maps)
+
+    time_series_shots = torch.stack(time_series_shots, dim=0)
+
+    return combined, time_series_shots, grappa_weights_torch
+
+
+def preprocess_raw_data_without_reference(seq, signal, R, Nread, sensitivity_maps, Nphase_in_practice, fourier_factor,
+                                          time_steps, device,
+                                          num_coils, grappa_weights_torch, grappa_regularization_factor=0.001):
+    kspace_frequencies = torch.Tensor(seq.calculate_kspace()[0])
+    sensitivity_maps = torch.flip(sensitivity_maps, dims=[1])
+    sensitivity_maps = sensitivity_maps.permute(1, 2, 0)
+    time_series_shots = []
+    time_series_x_freq_per_shot = []
+    time_series_y_freq_per_shot = []
+    for step in range(time_steps):
+        kspace_shot = kspace_frequencies[:, step * Nread * Nphase_in_practice: (step + 1) * Nread * Nphase_in_practice]
+
+        x_freq_shot = kspace_shot[0].unsqueeze(1)
+        y_freq_shot = kspace_shot[1].unsqueeze(1)
+
+        x_freq_shot = torch.reshape(x_freq_shot, (Nphase_in_practice, Nread)).clone().T
+        y_freq_shot = torch.reshape(y_freq_shot, (Nphase_in_practice, Nread)).clone().T
+
+        x_freq_shot[:, 0::2] = torch.flip(x_freq_shot[:, 0::2], [0])[:, :]
+        y_freq_shot[:, 0::2] = torch.flip(y_freq_shot[:, 0::2], [0])[:, :]
+
+        expanded_x_freq_per_shot = np.zeros((Nread, Nread), dtype=complex)
+        expanded_x_freq_per_shot[:, 0:int(Nread * fourier_factor):R] = x_freq_shot
+
+        expanded_y_freq_per_shot = np.zeros((Nread, Nread), dtype=complex)
+        expanded_y_freq_per_shot[:, 0:int(Nread * fourier_factor):R] = y_freq_shot
+
+        time_series_x_freq_per_shot.append(expanded_x_freq_per_shot)
+        time_series_y_freq_per_shot.append(expanded_y_freq_per_shot)
+
+        expanded_kspace_per_shot = torch.zeros((Nread, Nread, num_coils), dtype=torch.complex64)
+
+        single_shot = signal[step * Nread * Nphase_in_practice: (step + 1) * Nread * Nphase_in_practice]
+        for coil in range(num_coils):
+            single_shot_coil = single_shot[:, coil]  # Extract one coil
+            single_shot_coil = torch.reshape(single_shot_coil, (Nphase_in_practice, Nread)).clone().T
+            single_shot_coil[:, 0::2] = torch.flip(single_shot_coil[:, 0::2], [0])[:, :]
+            expanded_kspace_per_shot[:, 0: int(Nread * fourier_factor):R, coil] = single_shot_coil
+
+        time_series_shots.append(expanded_kspace_per_shot)
+
+    block_size = (4, 4)
+    acc_factors_2d = (1, 3)
+
+    for time_step in range(time_steps):
+        step = time_series_shots[time_step]
+        kspace_recon_kykxc, image_coilcombined_sos, unmixing_map_coilWise = eqdist_grappa_cuda.GRAPPA_interpolate_imageSpace_2d_torch(
+            step, acc_factors_2d, block_size, grappa_weights_torch, device)
+
+        time_series_shots[time_step] = combine_coils(kspace_recon_kykxc, sensitivity_maps)
+
+    time_series_shots = torch.stack(time_series_shots, dim=0)
+
+    return time_series_shots
+
+
+def simulate_and_process_mri(obj_p,
+                             seq_file_path,
+                             sensitivity_maps,
+                             num_coils,
+                             device,
+                             with_reference=True,
+                             grappa_weights_torch=None):
+    # sequence parameter loading:
+    seq_pulseq = pp.Sequence()
+    seq_pulseq.read(seq_file_path)
+    Nx = int(seq_pulseq.get_definition('Nx'))
+    NySampled = int(seq_pulseq.get_definition('NySampled'))
+    R = int(seq_pulseq.get_definition('AccelerationFactor'))
+    fourier_factor = seq_pulseq.get_definition("PartialFourierFactor")
+    time_steps = int(seq_pulseq.get_definition("TimeSteps"))
+
+    seq_mr0 = mr0.Sequence.import_file(seq_file_path)
+
+    # MR operations - use device-specific calls
+    if device.type == 'cuda':
+        graph = mr0.compute_graph(seq_mr0.cuda(), obj_p.cuda(), 20, 1e-3)
+        signal = mr0.execute_graph(graph, seq_mr0.cuda(), obj_p.cuda(), print_progress=True)
+    else:  # CPU
+        graph = mr0.compute_graph(seq_mr0, obj_p, 20, 1e-3)
+        signal = mr0.execute_graph(graph, seq_mr0, obj_p, print_progress=True)
+
+    if with_reference:
+        calibration_img_sos, time_series_shots, grappa_weights_torch = preprocess_raw_data(seq=seq_pulseq,
+                                                                                           signal=signal,
+                                                                                           R=R,
+                                                                                           Nread=Nx,
+                                                                                           Nphase_in_practice=NySampled,
+                                                                                           fourier_factor=fourier_factor,
+                                                                                           time_steps=time_steps,
+                                                                                           sensitivity_maps=sensitivity_maps,
+                                                                                           device=device,
+                                                                                           num_coils=num_coils,
+                                                                                           grappa_weights_torch=grappa_weights_torch)
+
+        return calibration_img_sos, time_series_shots, grappa_weights_torch
+
+    else:
+        time_series_shots = preprocess_raw_data_without_reference(seq=seq_pulseq,
+                                                                  signal=signal,
+                                                                  R=R,
+                                                                  Nread=Nx,
+                                                                  Nphase_in_practice=NySampled,
+                                                                  fourier_factor=fourier_factor,
+                                                                  time_steps=time_steps,
+                                                                  sensitivity_maps=sensitivity_maps,
+                                                                  device=device,
+                                                                  num_coils=num_coils,
+                                                                  grappa_weights_torch=grappa_weights_torch)
+        return time_series_shots

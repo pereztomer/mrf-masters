@@ -12,12 +12,16 @@ import os
 # seq_file_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\new\most_updated\sequence_writing_code_es_epi\6.5.25_epi_time_series_with_inversion_spoiler_gradient_half_fourier.seq"
 
 
-base_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\test_3_epi_se_rs\25_5_25\2025-05-25_epi_Nx128_Ny128_repetitions_1"
+# base_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\6.6.25\2025-06-04_epi_Nx192_Ny192_R3_part_fourier_repetitions_1"
+# raw_data_path = os.path.join(base_path, "data.mat")
+# output_dir = os.path.join(base_path, "plots")
+# seq_file_path = os.path.join(base_path, "2025-06-04_epi_Nx192_Ny192_R3_part_fourier_repetitions_1.seq")
 
+
+base_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\26.6.25\epi_gre"
 raw_data_path = os.path.join(base_path, "data.mat")
-output_dir = os.path.join(base_path, "plots2")
-seq_file_path = os.path.join(base_path, "2025-05-25_epi_Nx128_Ny128_repetitions_1.seq")
-
+output_dir = os.path.join(base_path, "plots")
+seq_file_path = os.path.join(base_path, "epi_gre_192.seq")
 
 # Create output directory if it doesn't exist
 os.makedirs(output_dir, exist_ok=True)

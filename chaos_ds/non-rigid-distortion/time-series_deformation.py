@@ -27,7 +27,8 @@ def process_pixel(args):
 
 def main():
     # Load the M0 map
-    map_path = r"C:\Users\perez\Desktop\masters\mri_research\code\python\mrf-masters\chaos_ds\m0_map.npy"  # Update the path accordingly
+    # map_path = r"C:\Users\perez\Desktop\masters\mri_research\code\python\mrf-masters\chaos_ds\m0_map.npy"  # Update the path accordingly
+    map_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\code\python\mrf-masters\chaos_ds\m0_map.npy"
     m0_map = np.load(map_path)
 
     # Process the image to get the contour mask
@@ -38,7 +39,7 @@ def main():
     height, width = m0_map.shape
 
     # Define time series length
-    l = 250  # Number of time steps/images in the series
+    l = 50  # Number of time steps/images in the series
 
     # Define initial and final transformation parameters for each control point
     # parameter_sequences = []
@@ -88,8 +89,8 @@ def main():
         move_y = point[1] - center_y  # Vertical distance from the center
 
         # Outward movement: moving away from the center at t=0
-        tx_start = move_x * 0.2  # 10% of the distance outward
-        ty_start = move_y * 0.2  # 10% of the distance outward
+        tx_start = move_x * 0.5  # 10% of the distance outward
+        ty_start = move_y * 0.5  # 10% of the distance outward
 
         # Return to original position at the end
         tx_end = 0  # At the end, the point returns to its original position
@@ -124,7 +125,7 @@ def main():
         })
 
     # Create directory to save images
-    output_dir = 'output_images_7'
+    output_dir = 'output_images_8'
     os.makedirs(output_dir, exist_ok=True)
 
     # Generate the time series of images
@@ -202,7 +203,7 @@ def main():
 
     # After generating images, convert them into a video
     # Specify video parameters
-    video_filename = 'distorted_m0_map_video_7.mp4'
+    video_filename = 'distorted_m0_map_video_8.mp4'
     video_fps = 24  # Frames per second
 
     # Get list of image files
@@ -225,25 +226,25 @@ def main():
 
 if __name__ == '__main__':
 
-    video_filename = 'distorted_m0_map_video_7.mp4'
-    video_fps = 40  # Frames per second
+    # video_filename = 'distorted_m0_map_video_7.mp4'
+    # video_fps = 40  # Frames per second
+    #
+    # # Get list of image files
+    # image_files = [os.path.join("output_images_7", f) for f in sorted(os.listdir("output_images_7")) if f.endswith('.png')]
+    #
+    # # Read the first image to get the size
+    # frame = cv2.imread(image_files[0])
+    # height, width, layers = frame.shape
+    #
+    # # Define the codec and create VideoWriter object
+    # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    # video = cv2.VideoWriter(video_filename, fourcc, video_fps, (width, height))
+    #
+    # for image_file in image_files:
+    #     frame = cv2.imread(image_file)
+    #     video.write(frame)
+    #
+    # video.release()
+    # print(f'Video saved as {video_filename}')
 
-    # Get list of image files
-    image_files = [os.path.join("output_images_7", f) for f in sorted(os.listdir("output_images_7")) if f.endswith('.png')]
-
-    # Read the first image to get the size
-    frame = cv2.imread(image_files[0])
-    height, width, layers = frame.shape
-
-    # Define the codec and create VideoWriter object
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video = cv2.VideoWriter(video_filename, fourcc, video_fps, (width, height))
-
-    for image_file in image_files:
-        frame = cv2.imread(image_file)
-        video.write(frame)
-
-    video.release()
-    print(f'Video saved as {video_filename}')
-
-    # main()
+    main()

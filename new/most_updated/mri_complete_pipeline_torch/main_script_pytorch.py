@@ -15,7 +15,7 @@ print(f"Using device: {device}")
 
 base_path = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\6.6.25\2025-06-05_epi_multishot_ref_only_Nx192_Ny192_R3_part_fourier_reps0"
 raw_data_path = os.path.join(base_path, "data.mat")
-output_dir = os.path.join(base_path, "plots")
+output_dir = os.path.join(base_path, "plots_v3")
 seq_file_path = os.path.join(base_path, "2025-06-05_epi_multishot_ref_only_Nx192_Ny192_R3_part_fourier_reps0.seq")
 # Create output directory if it doesn't exist
 os.makedirs(output_dir, exist_ok=True)

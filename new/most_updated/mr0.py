@@ -23,7 +23,7 @@ import time
 
 def main():
 
-    seq_file = r"C:\Users\perez\OneDrive - Technion\masters\mri_research\datasets\mrf custom dataset\epi\20.7.25\epi_gre_mrf_epi\epi_gre_mrf_epi.seq"
+    seq_file = r"C:\Users\perez\Desktop\mrf-motion\sequence_generation\gre_epi_128_fourier_factor_0.5625_w_reference.seq"
     # for plotting graph of the signal evolotion
     seq = pp.Sequence()
     seq.read(seq_file)

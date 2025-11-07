@@ -278,12 +278,18 @@ def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=N
         measured_traj_delay: Calculated trajectory delay
     """
     # extract relevant parameters
-    nADC = int(seq.get_definition('FrequencyEncodingSteps'))
-    Nx = int(seq.get_definition('Nx'))
-    Ny = int(seq.get_definition('Ny'))
-    Ny_sampled = int(seq.get_definition('NySampled'))
-
-    fov_x, fov_y, fov_z = seq.get_definition('FOV')
+    # nADC = int(seq.get_definition('FrequencyEncodingSteps'))
+    # Nx = int(seq.get_definition('Nx'))
+    # Ny = int(seq.get_definition('Ny'))
+    # Ny_sampled = int(seq.get_definition('NySampled'))
+    nADC = 192
+    Nx = 192
+    Ny = 192
+    Ny_sampled = 192
+    fov_x = 256e-3
+    fov_y = 256e-3
+    fov_z = 256e-3
+    # fov_x, fov_y, fov_z = seq.get_definition('FOV')
     # fov = fov_x
     delta_ky = 1 / fov_y
     ktraj_adc_initial, _, _, _, t_adc_initial = seq.calculate_kspace()
@@ -306,7 +312,8 @@ def run_epi_pipeline(rawdata, use_phase_correction=False, show_plots=True, seq=N
         pc_coef = mphase1 / (2 * np.pi)
         data_resampled = apply_phase_correction(data_resampled, pc_coef)
 
-    half_fourier = True if seq.get_definition('PartialFourierFactor') < 1 else False
+    # half_fourier = True if seq.get_definition('PartialFourierFactor') < 1 else False
+    half_fourier = False
     if half_fourier:
         data_resampled = np.where(data_resampled == 0, 1e-10, data_resampled)
         data_full_kspace = create_full_kspace(data_resampled, ktraj_resampled, Ny, delta_ky)
