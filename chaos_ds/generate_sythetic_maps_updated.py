@@ -7,6 +7,7 @@ from PIL import Image
 from find_countor import process_image
 # Function to generate T1, T2, and M0 maps
 import numpy as np
+import MRzeroCore as mr0
 
 """
 ####################################
@@ -58,9 +59,39 @@ def generate_maps(labels, default_values, unknown_image, background_mask):
 
 
 def main():
-    single_dicom_inphase_file_path = r"C:\Users\perez\Desktop\masters\mri_research\datasets\Chaos dataset\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\DICOM_anon\InPhase\IMG-0004-00016.dcm"
-    single_dicom_outphase_file_path = r"C:\Users\perez\Desktop\masters\mri_research\datasets\Chaos dataset\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\DICOM_anon\OutPhase\IMG-0004-00016.dcm"
-    single_labels_file_path = r"C:\Users\perez\Desktop\masters\mri_research\datasets\Chaos dataset\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\Ground\IMG-0004-00046.png"
+    import MRzeroCore as mr0
+
+    # something = mr0.generate_brainweb_phantoms("output/brainweb", "3T")
+
+    obj_p = mr0.VoxelGridPhantom.brainweb(r"C:\Users\perez\Desktop\phantom\subject05.npz")
+
+    fig, axes = plt.subplots(2, 7, figsize=(16, 8))
+    slice = 64
+    # images = [obj_p.B0[:,slice], obj_p.B1[0][:,slice], obj_p.D[:,slice], obj_p.PD[:,slice], obj_p.T1[:,slice], obj_p.T2[:,slice], obj_p.T2dash[:,slice]]
+    images = [obj_p.B0[:,:,slice], obj_p.B1[0][:,:,slice], obj_p.D[:,:,slice], obj_p.PD[:,:,slice], obj_p.T1[:,:,slice], obj_p.T2[:,:,slice], obj_p.T2dash[:,:,slice]]
+    # images = [obj_p.B0[slice], obj_p.B1[0][slice], obj_p.D[slice], obj_p.PD[slice], obj_p.T1[slice], obj_p.T2[slice], obj_p.T2dash[slice]]
+    labels = ['B0', 'B1', 'D', 'PD', 'T1', 'T2', 'T2dash']
+
+
+    for i, (img, label) in enumerate(zip(images, labels)):
+        img = np.abs(img)  # Handle complex data
+
+        # Image
+        ax_img = axes[0, i]
+        im = ax_img.imshow(img, cmap='gray')
+        ax_img.set_title(label)
+        ax_img.axis('off')
+        plt.colorbar(im, ax=ax_img)
+
+        # Histogram
+        ax_hist = axes[1, i]
+        ax_hist.hist(img.flatten(), bins=50, color='blue', alpha=0.7)
+        ax_hist.set_title(f'{label} Histogram')
+        ax_hist.set_xlabel('Value')
+        ax_hist.set_ylabel('Frequency')
+
+    plt.tight_layout()
+    plt.show()
 
     single_dicom_inphase_file_path = r"C:\Users\perez\Desktop\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\DICOM_anon\InPhase\IMG-0004-00016.dcm"
     single_labels_file_path = r"C:\Users\perez\Desktop\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\Ground\IMG-0004-00046.png"
@@ -72,6 +103,8 @@ def main():
 
     background_mask = process_image(dicom_inphase_image)
 
+    plt.imshow(background_mask)
+    plt.show()
     # Load label image
     label_image = np.array(Image.open(single_labels_file_path))
 
@@ -92,29 +125,36 @@ def main():
 
     # Default values for T1, T2, and M0
     default_values = {
-        "Liver": {"T1": 500, "T2": 43, "M0": 1},
-        "Right kidney": {"T1": 650, "T2": 58, "M0": 0.9},
-        "Left kidney": {"T1": 650, "T2": 58, "M0": 0.9},
-        "Spleen": {"T1": 200, "T2": 61, "M0": 1},
-        "Fat": {"T1": 260, "T2": 85, "M0": 0.5}
+        "Liver": {"T1": 500 / 500, "T2": 43 / 56, "M0": 1},
+        "Right kidney": {"T1": 650 / 500, "T2": 58 / 56, "M0": 0.9},
+        "Left kidney": {"T1": 650 / 500, "T2": 58 / 56, "M0": 0.9},
+        "Spleen": {"T1": 200 / 500, "T2": 61 / 56, "M0": 1},
+        "Fat": {"T1": 260 / 500 , "T2": 85 / 56 , "M0": 0.5}
     }
 
     t1_map, t2_map, m0_map = generate_maps(labels, default_values, dicom_inphase_image, background_mask)
 
-    # Display the maps
-    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    ax[0].imshow(t1_map, cmap='hot', interpolation='nearest')
-    ax[0].set_title('T1 Map')
-    ax[0].axis('off')
+    # Display the maps with histograms
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    maps = [t1_map, t2_map, m0_map]
+    labels = ['T1 Map', 'T2 Map', 'M0 Map']
 
-    ax[1].imshow(t2_map, cmap='hot', interpolation='nearest')
-    ax[1].set_title('T2 Map')
-    ax[1].axis('off')
+    for i, (map_data, label) in enumerate(zip(maps, labels)):
+        # Image
+        ax_img = axes[0, i]
+        im = ax_img.imshow(map_data, cmap='hot', interpolation='nearest')
+        ax_img.set_title(label)
+        ax_img.axis('off')
+        plt.colorbar(im, ax=ax_img)
 
-    ax[2].imshow(m0_map, cmap='hot', interpolation='nearest')
-    ax[2].set_title('M0 Map')
-    ax[2].axis('off')
+        # Histogram
+        ax_hist = axes[1, i]
+        ax_hist.hist(np.abs(map_data).flatten(), bins=50, color='blue', alpha=0.7)
+        ax_hist.set_title(f'{label} Histogram')
+        ax_hist.set_xlabel('Value')
+        ax_hist.set_ylabel('Frequency')
 
+    plt.tight_layout()
     plt.show()
     # save all maps
     # np.save("t1_map.npy", t1_map)

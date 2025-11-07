@@ -22,17 +22,17 @@ import scipy.io as sio
 import time
 
 def main():
-
-    seq_file = r"C:\Users\perez\Desktop\mrf-motion\sequence_generation\gre_epi_128_fourier_factor_0.5625_w_reference.seq"
-    # for plotting graph of the signal evolotion
-    seq = pp.Sequence()
-    seq.read(seq_file)
-    signal = mr0.util.simulate_2d(seq)
-    seq.plot(plot_now=False)
-    mr0.util.insert_signal_plot(seq=seq, signal=signal.numpy())
-    plt.show()
-    init_time = time.time()
-    seq0 = mr0.Sequence.import_file(seq_file)
+    #
+    # seq_file = r"C:\Users\perez\Desktop\mrf-motion\sequence_generation\gre_epi_128_fourier_factor_0.5625_w_reference.seq"
+    # # for plotting graph of the signal evolotion
+    # seq = pp.Sequence()
+    # seq.read(seq_file)
+    # signal = mr0.util.simulate_2d(seq)
+    # seq.plot(plot_now=False)
+    # mr0.util.insert_signal_plot(seq=seq, signal=signal.numpy())
+    # plt.show()
+    # init_time = time.time()
+    # seq0 = mr0.Sequence.import_file(seq_file)
     obj_p = mr0.VoxelGridPhantom.load_mat("numerical_brain_cropped.mat")
     obj_p = obj_p.build()
     # Simulate the sequence
