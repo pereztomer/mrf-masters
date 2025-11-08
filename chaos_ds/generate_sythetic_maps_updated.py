@@ -16,7 +16,6 @@ This script generates synthetic T1, T2, and M0 maps from a set of labeled masks 
 """
 
 
-
 def generate_maps(labels, default_values, unknown_image, background_mask):
     shape = next(iter(labels.values())).shape  # Get the shape from one of the masks
     t1_map = np.zeros(shape, dtype=np.float32)
@@ -62,16 +61,24 @@ def generate_maps(labels, default_values, unknown_image, background_mask):
 def main():
     import MRzeroCore as mr0
 
-
     obj_p = mr0.VoxelGridPhantom.brainweb(r"C:\Users\perez\Desktop\phantom\subject05.npz")
 
     fig, axes = plt.subplots(2, 7, figsize=(16, 8))
     slice = 64
     # images = [obj_p.B0[:,slice], obj_p.B1[0][:,slice], obj_p.D[:,slice], obj_p.PD[:,slice], obj_p.T1[:,slice], obj_p.T2[:,slice], obj_p.T2dash[:,slice]]
-    images = [obj_p.B0[:,:,slice], obj_p.B1[0][:,:,slice], obj_p.D[:,:,slice], obj_p.PD[:,:,slice], obj_p.T1[:,:,slice], obj_p.T2[:,:,slice], obj_p.T2dash[:,:,slice]]
-    # images = [obj_p.B0[slice], obj_p.B1[0][slice], obj_p.D[slice], obj_p.PD[slice], obj_p.T1[slice], obj_p.T2[slice], obj_p.T2dash[slice]]
+    images = [obj_p.B0[:, :, slice], obj_p.B1[0][:, :, slice], obj_p.D[:, :, slice], obj_p.PD[:, :, slice],
+              obj_p.T1[:, :, slice], obj_p.T2[:, :, slice], obj_p.T2dash[:, :, slice]]
+
+    W, H = 256, 256
+    import cv2
+    for idx in range(len(images)):
+        im = images[idx]
+        im = im.numpy()
+        im_resized = cv2.resize(im.real, (W, H)) + 1j * cv2.resize(im.imag, (W, H))
+        images[idx] = im_resized
+
     labels = ['B0', 'B1', 'D', 'PD', 'T1', 'T2', 'T2dash']
-    brain_mask = (obj_p.PD[:,:,slice] > 0).numpy()
+    brain_mask = images[3] > 0
 
     for i, (img, label) in enumerate(zip(images, labels)):
         img = np.abs(img)  # Handle complex data
@@ -126,9 +133,8 @@ def main():
     plt.tight_layout()
     plt.show()
 
-
     dicom_inphase_image = (dicom_inphase_image - np.min(dicom_inphase_image)) / (
-                np.max(dicom_inphase_image) - np.min(dicom_inphase_image))
+            np.max(dicom_inphase_image) - np.min(dicom_inphase_image))
     plt.imshow(dicom_inphase_image, cmap='gray')
     plt.title("Dicom Inphase Image")
     plt.show()
@@ -143,18 +149,20 @@ def main():
     }
 
     from skimage import exposure
-    t1_matched_vals = exposure.match_histograms(dicom_inphase_image[abdomen_mask], obj_p.T1[:,:,slice].numpy()[brain_mask])
+    t1_matched_vals = exposure.match_histograms(dicom_inphase_image[abdomen_mask],
+                                                obj_p.T1[:, :, slice].numpy()[brain_mask])
     t1_abdomen = np.zeros_like(dicom_inphase_image)
     t1_abdomen[abdomen_mask] = t1_matched_vals
 
-    t2_matched_vals = exposure.match_histograms(dicom_inphase_image[abdomen_mask], obj_p.T2[:,:,slice].numpy()[brain_mask])
+    t2_matched_vals = exposure.match_histograms(dicom_inphase_image[abdomen_mask],
+                                                obj_p.T2[:, :, slice].numpy()[brain_mask])
     t2_abdomen = np.zeros_like(dicom_inphase_image)
     t2_abdomen[abdomen_mask] = t2_matched_vals
 
-    pd_matched_vals = exposure.match_histograms(dicom_inphase_image[abdomen_mask], obj_p.PD[:,:,slice].numpy()[brain_mask])
+    pd_matched_vals = exposure.match_histograms(dicom_inphase_image[abdomen_mask],
+                                                obj_p.PD[:, :, slice].numpy()[brain_mask])
     pd_abdomen = np.zeros_like(dicom_inphase_image)
     pd_abdomen[abdomen_mask] = pd_matched_vals
-
 
     # Display the maps with histograms
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
@@ -186,6 +194,7 @@ def main():
         t2=t2_abdomen,
         m0=pd_abdomen
     )
+
 
 # Example usage
 if __name__ == "__main__":
