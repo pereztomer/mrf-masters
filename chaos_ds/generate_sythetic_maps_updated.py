@@ -14,8 +14,9 @@ def main():
     fig, axes = plt.subplots(2, 7, figsize=(16, 8))
     slice = 64
     # images = [obj_p.B0[:,slice], obj_p.B1[0][:,slice], obj_p.D[:,slice], obj_p.PD[:,slice], obj_p.T1[:,slice], obj_p.T2[:,slice], obj_p.T2dash[:,slice]]
-    images = {"B0":obj_p.B0[:, :, slice], "B1":obj_p.B1[0][:, :, slice], "D":obj_p.D[:, :, slice], "PD" :obj_p.PD[:, :, slice],
-              "T1":obj_p.T1[:, :, slice], "T2":obj_p.T2[:, :, slice], "T2_dash": obj_p.T2dash[:, :, slice]}
+    images = {"B0": obj_p.B0[:, :, slice], "B1": obj_p.B1[0][:, :, slice], "D": obj_p.D[:, :, slice],
+              "PD": obj_p.PD[:, :, slice],
+              "T1": obj_p.T1[:, :, slice], "T2": obj_p.T2[:, :, slice], "T2_dash": obj_p.T2dash[:, :, slice]}
 
     W, H = 256, 256
     import cv2
@@ -106,9 +107,8 @@ def main():
     t2_dash_abdomen = np.zeros_like(dicom_inphase_image)
     t2_dash_abdomen[abdomen_mask] = t2_dash_matched_vals
 
-
     # Display the maps with histograms
-    maps = [t1_abdomen, t2_abdomen, pd_abdomen,t2_dash_abdomen]
+    maps = [t1_abdomen, t2_abdomen, pd_abdomen, t2_dash_abdomen]
     fig, axes = plt.subplots(2, len(maps), figsize=(15, 10))
     labels = ['T1 Map', 'T2 Map', 'M0 Map', 'T2 dash Map']
 
@@ -134,15 +134,32 @@ def main():
     constant_d = np.zeros((H, W), dtype=np.complex128)
     constant_d[brain_mask] = 5.0 + 3.0j  # specific complex value everywhere mask is True
 
-    np.savez(
-        r"C:\Users\perez\Desktop\phantom\abdominal_phantom\maps.npz",
-        t1=t1_abdomen,
-        t2=t2_abdomen,
-        m0=pd_abdomen,
-        b0=images['B0'],
-        b1=images['B1'],
-        t2_dash=t2_dash_abdomen,
-        d=constant_d
+    from scipy.io import savemat
+
+    # np.savez(
+    #     r"C:\Users\perez\Desktop\phantom\abdominal_phantom\maps.npz",
+    #     t1=t1_abdomen,
+    #     t2=t2_abdomen,
+    #     m0=pd_abdomen,
+    #     b0=images['B0'],
+    #     b1=images['B1'],
+    #     t2_dash=t2_dash_abdomen,
+    #     d=constant_d
+    # )
+
+    stacked = np.stack([
+        pd_abdomen,  # index 0
+        t1_abdomen,  # index 1
+        t2_abdomen,  # index 2
+        images['B0'],  # index 3
+        images['B1']  # index 4
+    ], axis=-1)
+
+    savemat(
+        r"C:\Users\perez\Desktop\phantom\abdominal_phantom.mat",
+        {
+            'cropped_brain': stacked,
+        }
     )
 
 
