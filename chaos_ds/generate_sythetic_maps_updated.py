@@ -179,10 +179,13 @@ def main():
     plt.tight_layout()
     plt.show()
     # save all maps
-    np.save("t1_map.npy", t1_abdomen)
-    np.save("t2_map.npy", t2_abdomen)
-    np.save("m0_map.npy", pd_abdomen)
 
+    np.savez(
+        r"C:\Users\perez\Desktop\phantom\abdominal_phantom\maps.npz",
+        t1=t1_abdomen,
+        t2=t2_abdomen,
+        m0=pd_abdomen
+    )
 
 # Example usage
 if __name__ == "__main__":
