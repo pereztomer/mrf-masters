@@ -121,6 +121,7 @@ def main():
     labels.pop("Background", None)
     labels['abdomen_mask'] = abdomen_mask
 
+    labels_to_coco(labels, r"C:\Users\perez\Desktop\phantom\abdominal_phantom_annotations.json")
     n_masks = len(labels)
     fig, axes = plt.subplots(1, n_masks, figsize=(4 * n_masks, 4))
 
@@ -202,7 +203,6 @@ def main():
             'cropped_brain': stacked,
         }
     )
-    labels_to_coco(labels, r"C:\Users\perez\Desktop\phantom\abdominal_phantom_annotations.json")
 
 
 # Example usage
