@@ -11,9 +11,10 @@ import MRzeroCore as mr0
 
 """
 ####################################
-This script generates synthetic T1, T2, and M0 maps from a set of labeled masks and an unknown image!!!!!!!!!!!!!!!!
+This script generates synthetic T1, T2, and M0 maps from a set of labeled masks and an dicom image
 ####################################
 """
+
 
 
 def generate_maps(labels, default_values, unknown_image, background_mask):
@@ -61,7 +62,6 @@ def generate_maps(labels, default_values, unknown_image, background_mask):
 def main():
     import MRzeroCore as mr0
 
-    # something = mr0.generate_brainweb_phantoms("output/brainweb", "3T")
 
     obj_p = mr0.VoxelGridPhantom.brainweb(r"C:\Users\perez\Desktop\phantom\subject05.npz")
 
@@ -71,7 +71,7 @@ def main():
     images = [obj_p.B0[:,:,slice], obj_p.B1[0][:,:,slice], obj_p.D[:,:,slice], obj_p.PD[:,:,slice], obj_p.T1[:,:,slice], obj_p.T2[:,:,slice], obj_p.T2dash[:,:,slice]]
     # images = [obj_p.B0[slice], obj_p.B1[0][slice], obj_p.D[slice], obj_p.PD[slice], obj_p.T1[slice], obj_p.T2[slice], obj_p.T2dash[slice]]
     labels = ['B0', 'B1', 'D', 'PD', 'T1', 'T2', 'T2dash']
-
+    brain_mask = (obj_p.PD[:,:,slice] > 0).numpy()
 
     for i, (img, label) in enumerate(zip(images, labels)):
         img = np.abs(img)  # Handle complex data
@@ -85,7 +85,7 @@ def main():
 
         # Histogram
         ax_hist = axes[1, i]
-        ax_hist.hist(img.flatten(), bins=50, color='blue', alpha=0.7)
+        ax_hist.hist(img[brain_mask].flatten(), bins=50, color='blue', alpha=0.7)
         ax_hist.set_title(f'{label} Histogram')
         ax_hist.set_xlabel('Value')
         ax_hist.set_ylabel('Frequency')
@@ -101,10 +101,8 @@ def main():
     dicom_inphase_image = dicom_inphase_data.pixel_array
     # min-max normalization for dicom_inphase_image
 
-    background_mask = process_image(dicom_inphase_image)
+    abdomen_mask = process_image(dicom_inphase_image)
 
-    plt.imshow(background_mask)
-    plt.show()
     # Load label image
     label_image = np.array(Image.open(single_labels_file_path))
 
@@ -115,11 +113,24 @@ def main():
     labels["Fat"] = dicom_inphase_image > 500
     # remove key backgorund from labels
     labels.pop("Background", None)
-    # Create overlay image
+    labels['abdomen_mask'] = abdomen_mask
+
+    n_masks = len(labels)
+    fig, axes = plt.subplots(1, n_masks, figsize=(4 * n_masks, 4))
+
+    for ax, (name, mask) in zip(axes, labels.items()):
+        ax.imshow(mask, cmap='gray')
+        ax.set_title(name)
+        ax.axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
 
     dicom_inphase_image = (dicom_inphase_image - np.min(dicom_inphase_image)) / (
                 np.max(dicom_inphase_image) - np.min(dicom_inphase_image))
     plt.imshow(dicom_inphase_image, cmap='gray')
+    plt.title("Dicom Inphase Image")
     plt.show()
     # overlay, color_map = create_overlay_image(dicom_inphase_image, labels)
 
@@ -129,14 +140,25 @@ def main():
         "Right kidney": {"T1": 650 / 500, "T2": 58 / 56, "M0": 0.9},
         "Left kidney": {"T1": 650 / 500, "T2": 58 / 56, "M0": 0.9},
         "Spleen": {"T1": 200 / 500, "T2": 61 / 56, "M0": 1},
-        "Fat": {"T1": 260 / 500 , "T2": 85 / 56 , "M0": 0.5}
     }
 
-    t1_map, t2_map, m0_map = generate_maps(labels, default_values, dicom_inphase_image, background_mask)
+    from skimage import exposure
+    t1_matched_vals = exposure.match_histograms(dicom_inphase_image[abdomen_mask], obj_p.T1[:,:,slice].numpy()[brain_mask])
+    t1_abdomen = np.zeros_like(dicom_inphase_image)
+    t1_abdomen[abdomen_mask] = t1_matched_vals
+
+    t2_matched_vals = exposure.match_histograms(dicom_inphase_image[abdomen_mask], obj_p.T2[:,:,slice].numpy()[brain_mask])
+    t2_abdomen = np.zeros_like(dicom_inphase_image)
+    t2_abdomen[abdomen_mask] = t2_matched_vals
+
+    pd_matched_vals = exposure.match_histograms(dicom_inphase_image[abdomen_mask], obj_p.PD[:,:,slice].numpy()[brain_mask])
+    pd_abdomen = np.zeros_like(dicom_inphase_image)
+    pd_abdomen[abdomen_mask] = pd_matched_vals
+
 
     # Display the maps with histograms
     fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-    maps = [t1_map, t2_map, m0_map]
+    maps = [t1_abdomen, t2_abdomen, pd_abdomen]
     labels = ['T1 Map', 'T2 Map', 'M0 Map']
 
     for i, (map_data, label) in enumerate(zip(maps, labels)):
@@ -157,9 +179,9 @@ def main():
     plt.tight_layout()
     plt.show()
     # save all maps
-    # np.save("t1_map.npy", t1_map)
-    # np.save("t2_map.npy", t2_map)
-    # np.save("m0_map.npy", m0_map)
+    np.save("t1_map.npy", t1_abdomen)
+    np.save("t2_map.npy", t2_abdomen)
+    np.save("m0_map.npy", pd_abdomen)
 
 
 # Example usage
