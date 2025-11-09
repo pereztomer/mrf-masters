@@ -69,7 +69,6 @@ def main():
     labels.pop("Background", None)
     labels['abdomen_mask'] = abdomen_mask
 
-    np.save(r"C:\Users\perez\Desktop\phantom\labels_masks.npy", labels)
     n_masks = len(labels)
     fig, axes = plt.subplots(1, n_masks, figsize=(4 * n_masks, 4))
 
@@ -111,9 +110,8 @@ def main():
     # Display the maps with histograms
     maps = [t1_abdomen, t2_abdomen, pd_abdomen, t2_dash_abdomen]
     fig, axes = plt.subplots(2, len(maps), figsize=(15, 10))
-    labels = ['T1 Map', 'T2 Map', 'M0 Map', 'T2 dash Map']
 
-    for i, (map_data, label) in enumerate(zip(maps, labels)):
+    for i, (map_data, label) in enumerate(zip(maps, ['T1 Map', 'T2 Map', 'M0 Map', 'T2 dash Map'])):
         # Image
         ax_img = axes[0, i]
         im = ax_img.imshow(map_data, cmap='hot', interpolation='nearest')
@@ -135,14 +133,46 @@ def main():
     constant_d = np.zeros((H, W), dtype=np.complex128)
     constant_d[brain_mask] = 5.0 + 3.0j  # specific complex value everywhere mask is True
 
+    # After creating abdomen_mask
+    from skimage import measure
+
+    # Get bounding box from abdomen mask
+    props = measure.regionprops(abdomen_mask.astype(int))
+    if props:
+        bbox = props[0].bbox  # (min_row, min_col, max_row, max_col)
+        min_row, min_col, max_row, max_col = bbox
+
+        # Add padding if desired
+        padding = 10
+        min_row = max(0, min_row - padding)
+        min_col = max(0, min_col - padding)
+        max_row = min(abdomen_mask.shape[0], max_row + padding)
+        max_col = min(abdomen_mask.shape[1], max_col + padding)
+
+        # Crop all images and masks
+        dicom_inphase_image = dicom_inphase_image[min_row:max_row, min_col:max_col]
+        abdomen_mask = abdomen_mask[min_row:max_row, min_col:max_col]
+
+        # Crop all labels
+        for key in labels.keys():
+            labels[key] = labels[key][min_row:max_row, min_col:max_col]
+
+        # Crop all parametric maps later
+        t1_abdomen = t1_abdomen[min_row:max_row, min_col:max_col]
+        t2_abdomen = t2_abdomen[min_row:max_row, min_col:max_col]
+        pd_abdomen = pd_abdomen[min_row:max_row, min_col:max_col]
+        t2_dash_abdomen = t2_dash_abdomen[min_row:max_row, min_col:max_col]
+
+    print(f"new shape: {min_row, max_row}, {min_col, max_col}")
+    np.save(r"C:\Users\perez\Desktop\phantom\labels_masks.npy", labels)
     from scipy.io import savemat
 
     stacked = np.stack([
         pd_abdomen,  # index 0
         t1_abdomen,  # index 1
         t2_abdomen,  # index 2
-        images['B0'],  # index 3
-        images['B1']  # index 4
+        images['B0'][min_row:max_row, min_col:max_col],  # index 3
+        images['B1'][min_row:max_row, min_col:max_col]  # index 4
     ], axis=-1)
 
     savemat(
