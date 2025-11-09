@@ -9,58 +9,6 @@ import MRzeroCore as mr0
 from skimage import measure
 import json
 
-def labels_to_coco(labels, save_path):
-    """Convert labels dict to COCO format and save"""
-
-    def mask_to_polygon(mask):
-        polygons = []
-        for contour in measure.find_contours(mask, 0.5):
-            polygon = np.flip(contour, axis=1).flatten().tolist()
-            if len(polygon) > 4:
-                polygons.append(polygon)
-        return polygons
-
-    def get_bbox(mask):
-        rows, cols = np.where(mask)
-        if len(rows) == 0:
-            return [0, 0, 0, 0]
-        return [int(cols.min()), int(rows.min()), int(cols.max() - cols.min()), int(rows.max() - rows.min())]
-
-    coco_data = {
-        'images': [],
-        'annotations': [],
-        'categories': [{'id': 1, 'name': 'abdomen', 'supercategory': ''}]
-    }
-
-    image_id, ann_id = 1, 1
-
-    for label_name, mask in labels.items():
-        polygons = mask_to_polygon(mask)
-
-        coco_data['images'].append({
-            'id': image_id,
-            'file_name': f'{label_name}.png',
-            'height': mask.shape[0],
-            'width': mask.shape[1]
-        })
-
-        for polygon in polygons:
-            coco_data['annotations'].append({
-                'id': ann_id,
-                'image_id': image_id,
-                'category_id': 1,
-                'segmentation': [polygon],
-                'area': float(np.sum(mask)),
-                'bbox': get_bbox(mask),
-                'iscrowd': 0
-            })
-            ann_id += 1
-
-        image_id += 1
-
-    with open(save_path, 'w') as f:
-        json.dump(coco_data, f, indent=2)
-
 def main():
     obj_p = mr0.VoxelGridPhantom.brainweb(r"C:\Users\perez\Desktop\phantom\subject05.npz")
 
@@ -121,7 +69,7 @@ def main():
     labels.pop("Background", None)
     labels['abdomen_mask'] = abdomen_mask
 
-    labels_to_coco(labels, r"C:\Users\perez\Desktop\phantom\abdominal_phantom_annotations.json")
+    np.save(r"C:\Users\perez\Desktop\phantom\labels_masks.npy", labels)
     n_masks = len(labels)
     fig, axes = plt.subplots(1, n_masks, figsize=(4 * n_masks, 4))
 
@@ -203,6 +151,7 @@ def main():
             'cropped_brain': stacked,
         }
     )
+
 
 
 # Example usage
