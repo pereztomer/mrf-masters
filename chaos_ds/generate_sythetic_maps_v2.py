@@ -164,7 +164,7 @@ def main():
         t2_dash_abdomen = t2_dash_abdomen[min_row:max_row, min_col:max_col]
 
     print(f"new shape: {min_row, max_row}, {min_col, max_col}")
-    np.save(r"C:\Users\perez\Desktop\phantom\labels_masks.npy", labels)
+    # np.save(r"C:\Users\perez\Desktop\phantom\labels_masks.npy", labels)
     from scipy.io import savemat
 
     stacked = np.stack([
