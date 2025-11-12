@@ -170,13 +170,13 @@ def main():
     stacked = np.stack([
         pd_abdomen,  # index 0
         t1_abdomen,  # index 1
-        t2_abdomen,  # index 2
+        t2_abdomen + 0.2,  # index 2
         images['B0'][min_row:max_row, min_col:max_col],  # index 3
         images['B1'][min_row:max_row, min_col:max_col]  # index 4
     ], axis=-1)
 
     savemat(
-        r"C:\Users\perez\Desktop\phantom\abdominal_phantom.mat",
+        r"C:\Users\perez\Desktop\phantom\abdominal_phantom_2.mat",
         {
             'cropped_brain': stacked,
         }
