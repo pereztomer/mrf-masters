@@ -175,12 +175,12 @@ def main():
         images['B1'][min_row:max_row, min_col:max_col]  # index 4
     ], axis=-1)
 
-    savemat(
-        r"C:\Users\perez\Desktop\phantom\abdominal_phantom_2.mat",
-        {
-            'cropped_brain': stacked,
-        }
-    )
+    # savemat(
+    #     r"C:\Users\perez\Desktop\phantom\abdominal_phantom_2.mat",
+    #     {
+    #         'cropped_brain': stacked,
+    #     }
+    # )
 
 
 

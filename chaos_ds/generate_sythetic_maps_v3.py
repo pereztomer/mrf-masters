@@ -7,9 +7,23 @@ import pydicom
 import matplotlib.pyplot as plt
 from skimage import measure
 from find_countor import process_image
+from read_dicom_from_dirs import extract_labels
+from PIL import Image
+from scipy.ndimage import label as scipy_label
+from scipy.ndimage import label as scipy_label, binary_closing
+import os
 
 
-def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_output_path, seed=42, plot=False):
+def random_multi_peak_dist(perlin_field, n_peaks=2):
+    peaks = np.sort(np.random.rand(n_peaks))
+    weights = np.random.dirichlet(np.ones(n_peaks))
+    result = np.zeros_like(perlin_field)
+    for peak, weight in zip(peaks, weights):
+        sigma = np.random.uniform(0.05, 0.15)
+        result += weight * np.exp(-((perlin_field - peak) ** 2) / (2 * sigma ** 2))
+    return result / result.max()
+
+def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_output_path, seed=42, plot_output_path=None, plot=False):
     # Load DICOM
     dicom = pydicom.dcmread(dicom_path).pixel_array
     dicom = (dicom - dicom.min()) / (dicom.max() - dicom.min())
@@ -21,23 +35,55 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
     labels.pop("Background", None)
     labels['abdomen_mask'] = abdomen_mask
 
-    edges = cv2.Canny((dicom * 255).astype(np.uint8), 50, 150)
-    dist = distance_transform_edt(~edges.astype(bool)).astype(float)
-    dist_norm = (dist - dist.min()) / (dist.max() - dist.min() + 1e-8)
+    non_black_pct = (label_image != 0).sum() / label_image.size * 100
+    if non_black_pct < 4:
+        print("Mask too small, skipping")
+        return
+    os.makedirs(os.path.dirname(mat_output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(labels_npy_output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(plot_output_path),exist_ok=True)
+    print(f"Non-black: {non_black_pct:.2f}%")
 
-    # Perlin noise
-    h, w = dicom.shape
-    noise = OpenSimplex(seed=seed)
-    perlin = np.array([[noise.noise2d(x * 0.05, y * 0.05) for x in range(w)] for y in range(h)])
-    perlin = (perlin - perlin.min()) / (perlin.max() - perlin.min())
+    # Create regions based on intensity levels
+    dicom_norm = (dicom * 255).astype(np.uint8)
+    levels = np.percentile(dicom_norm[abdomen_mask], [30,60,90])
 
-    # Create maps
-    t1_range, t2_range, pd_range = (500, 2000), (30, 150), (0.5, 1.0)
-    modulated = perlin * dist_norm
+    t1_map = np.zeros_like(dicom)
+    t2_map = np.zeros_like(dicom)
+    pd_map = np.zeros_like(dicom)
 
-    t1_map = t1_range[0] + modulated * (t1_range[1] - t1_range[0])
-    t2_map = t2_range[0] + modulated * (t2_range[1] - t2_range[0])
-    pd_map = pd_range[0] + modulated * (pd_range[1] - pd_range[0])
+    t1_range, t2_range, pd_range = (0, 4.1), (0, 1.6), (0.4, 1.0)
+    noise_gen = OpenSimplex(seed=seed)
+
+    # Process each intensity level
+    level_ranges = [(levels[i - 1] if i > 0 else 0, levels[i]) for i in range(len(levels))] + [(levels[-1], 255)]
+    for level_idx, (level_min, level_max) in enumerate(level_ranges):
+        # Create binary mask for this intensity range
+        level_mask = (dicom_norm >= level_min) & (dicom_norm < level_max)
+
+        # Label connected components in this level
+        labeled_regions, num_regions = scipy_label(level_mask)
+
+        # Sample Perlin per region
+        h, w = dicom.shape
+        perlin = np.array([[noise_gen.noise2(x * 0.1, y * 0.1) for x in range(w)] for y in range(h)])
+        perlin = (perlin - perlin.min()) / (perlin.max() - perlin.min() + 1e-8)
+
+        for region_id in range(1, num_regions + 1):
+            region_mask = (labeled_regions == region_id) & abdomen_mask
+            if not region_mask.any():
+                continue
+
+            # Random center value for this region
+            t1_val = t1_range[0] + np.random.rand() * (t1_range[1] - t1_range[0])
+            t2_val = t2_range[0] + np.random.rand() * (t2_range[1] - t2_range[0])
+            pd_val = pd_range[0] + np.random.rand() * (pd_range[1] - pd_range[0])
+
+            # Add smooth gradient
+            region_perlin = perlin[region_mask]
+            t1_map[region_mask] = t1_val + (region_perlin - 0.5) * (t1_range[1] - t1_range[0]) * 0.2
+            t2_map[region_mask] = t2_val + (region_perlin - 0.5) * (t2_range[1] - t2_range[0]) * 0.2
+            pd_map[region_mask] = pd_val + (region_perlin - 0.5) * (pd_range[1] - pd_range[0]) * 0.2
 
     t1_map[~abdomen_mask] = 0
     t2_map[~abdomen_mask] = 0
@@ -51,38 +97,107 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
         min_row, min_col = max(0, min_row - padding), max(0, min_col - padding)
         max_row, max_col = min(h, max_row + padding), min(w, max_col + padding)
 
+        # Make square
+        crop_h = max_row - min_row
+        crop_w = max_col - min_col
+        max_dim = max(crop_h, crop_w)
+        pad_h = (max_dim - crop_h) // 2
+        pad_w = (max_dim - crop_w) // 2
+
         t1_map = t1_map[min_row:max_row, min_col:max_col]
         t2_map = t2_map[min_row:max_row, min_col:max_col]
         pd_map = pd_map[min_row:max_row, min_col:max_col]
 
+        t1_map = np.pad(t1_map, ((pad_h, max_dim - crop_h - pad_h), (pad_w, max_dim - crop_w - pad_w)), mode='constant',
+                        constant_values=0)
+        t2_map = np.pad(t2_map, ((pad_h, max_dim - crop_h - pad_h), (pad_w, max_dim - crop_w - pad_w)), mode='constant',
+                        constant_values=0)
+        pd_map = np.pad(pd_map, ((pad_h, max_dim - crop_h - pad_h), (pad_w, max_dim - crop_w - pad_w)), mode='constant',
+                        constant_values=0)
+
         for key in labels.keys():
             labels[key] = labels[key][min_row:max_row, min_col:max_col]
+            labels[key] = np.pad(labels[key], ((pad_h, max_dim - crop_h - pad_h), (pad_w, max_dim - crop_w - pad_w)),
+                                 mode='constant', constant_values=0)
 
-    if plot:
-        fig, axes = plt.subplots(2, 3, figsize=(12, 8))
-        for ax, (m, name) in zip(axes[0], [(t1_map, 'T1'), (t2_map, 'T2'), (pd_map, 'PD')]):
-            im = ax.imshow(m, cmap='hot')
-            ax.set_title(name)
-            ax.axis('off')
-            plt.colorbar(im, ax=ax)
-        for ax, (m, name) in zip(axes[1], [(t1_map, 'T1'), (t2_map, 'T2'), (pd_map, 'PD')]):
-            ax.hist(m[m > 0].flatten(), bins=50, alpha=0.7)
-            ax.set_title(f'{name} Hist')
+    if plot_output_path:
+        fig, axes = plt.subplots(2, 5, figsize=(16, 8))
+
+        # Row 0: DICOM, abdomen_mask, T1, T2, PD
+        axes[0, 0].imshow(dicom, cmap='gray')
+        axes[0, 0].set_title('DICOM')
+        axes[0, 0].axis('off')
+
+        axes[0, 1].imshow(abdomen_mask, cmap='gray')
+        axes[0, 1].set_title('Abdomen Mask')
+        axes[0, 1].axis('off')
+
+        vmin_t1, vmax_t1 = t1_range
+        vmin_t2, vmax_t2 = t2_range
+        vmin_pd, vmax_pd = pd_range
+
+        for i, (m, name, vmin, vmax) in enumerate(
+                [(t1_map, 'T1', vmin_t1, vmax_t1), (t2_map, 'T2', vmin_t2, vmax_t2), (pd_map, 'PD', vmin_pd, vmax_pd)]):
+            im = axes[0, i + 2].imshow(m, cmap='hot', vmin=vmin, vmax=vmax)
+            axes[0, i + 2].set_title(name)
+            axes[0, i + 2].axis('off')
+            plt.colorbar(im, ax=axes[0, i + 2])
+
+        # Row 1: Histograms + labels
+        for i, (m, name) in enumerate([(t1_map, 'T1'), (t2_map, 'T2'), (pd_map, 'PD')]):
+            axes[1, i + 1].hist(m[m > 0].flatten(), bins=50, alpha=0.7)
+            axes[1, i + 1].set_title(f'{name} Hist')
+
+        axes[1, 0].imshow(np.array(Image.open(labels_png_path)), cmap='gray')
+        axes[1, 0].set_title('Ground Truth Labels')
+        axes[1, 0].axis('off')
+
         plt.tight_layout()
-        plt.show()
+        plt.savefig(plot_output_path, dpi=100)
+        if plot:
+            plt.show()
 
-    # stacked = np.stack([pd_map, t1_map, t2_map, np.zeros_like(t1_map), np.zeros_like(t1_map)], axis=-1)
-    # savemat(mat_output_path, {'cropped_brain': stacked})
-    # np.save(labels_npy_output_path, labels)
+    stacked = np.stack([pd_map, t1_map, t2_map, np.zeros_like(t1_map), np.zeros_like(t1_map)], axis=-1)
+    savemat(mat_output_path, {'cropped_brain': stacked})
+    np.save(labels_npy_output_path, labels)
 
 
+
+
+def process_dataset(ground_dir, inphase_dir, output_dir, seed=42, plot=False):
+    ground_files = sorted([f for f in os.listdir(ground_dir) if f.endswith('.png')])
+
+    for ground_file in ground_files:
+        # Match DICOM by name (remove suffix if needed)
+        base_name = ground_file.replace('.png', '')
+        dicom_file = None
+        for f in os.listdir(inphase_dir):
+            if base_name in f and f.endswith('.dcm'):
+                dicom_file = f
+                break
+
+        if dicom_file is None:
+            print(f"Skipping {ground_file} - no matching DICOM")
+            continue
+
+        dicom_path = os.path.join(inphase_dir, dicom_file)
+        labels_png_path = os.path.join(ground_dir, ground_file)
+        mat_output = os.path.join(output_dir,base_name, f"{base_name}.mat")
+        npy_output = os.path.join(output_dir,base_name, f"{base_name}_labels.npy")
+        plot_output = os.path.join(output_dir,base_name, f"{base_name}_plot.png")
+
+
+        print(f"Processing {base_name}...")
+        create_perlin_maps(dicom_path, labels_png_path, mat_output, npy_output, seed=seed, plot_output_path=plot_output, plot=plot)
 
 def main():
-    single_dicom_inphase_file_path = r"C:\Users\perez\Desktop\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\DICOM_anon\InPhase\IMG-0004-00016.dcm"
-    single_labels_file_path = r"C:\Users\perez\Desktop\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\Ground\IMG-0004-00046.png"
-
-    create_perlin_maps(single_dicom_inphase_file_path, r"output.mat", r"labels.npy", seed=42, plot=True)
-    create_perlin_maps(single_dicom_inphase_file_path, single_labels_file_path, r"output.mat", r"labels.npy", seed=42, plot=True)
+    process_dataset(
+        r"C:\Users\perez\Desktop\data_from_local\Ground",
+        r"C:\Users\perez\Desktop\data_from_local\InPhase",
+        r"C:\Users\perez\Desktop\data_from_local\Output",
+        seed=42,
+        plot=False
+    )
 
 
 if __name__ == '__main__':
