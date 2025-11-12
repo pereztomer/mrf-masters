@@ -71,13 +71,10 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
         plt.tight_layout()
         plt.show()
 
-    stacked = np.stack([pd_map, t1_map, t2_map, np.zeros_like(t1_map), np.zeros_like(t1_map)], axis=-1)
-    savemat(mat_output_path, {'cropped_brain': stacked})
-    np.save(labels_npy_output_path, labels)
-
     # stacked = np.stack([pd_map, t1_map, t2_map, np.zeros_like(t1_map), np.zeros_like(t1_map)], axis=-1)
-    # savemat(mat_output_path, {'parametric_maps': stacked})
-    # np.save(labels_output_path, {'abdomen_mask': abdomen_mask})
+    # savemat(mat_output_path, {'cropped_brain': stacked})
+    # np.save(labels_npy_output_path, labels)
+
 
 
 def main():
