@@ -50,9 +50,6 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
 
     # Create regions based on intensity levels
     dicom_norm = (dicom * 255).astype(np.uint8)
-    # levels = np.percentile(dicom_norm[abdomen_mask], [30, 60, 90])
-    # levels = np.percentile(dicom_norm[abdomen_mask], [15,30,45,60,75,90])
-    # levels = np.percentile(dicom_norm[abdomen_mask], [18,36,54,62,80])
     levels = np.percentile(dicom_norm[abdomen_mask], [18,36,60,75,90])
 
     t1_map = np.zeros_like(dicom)
