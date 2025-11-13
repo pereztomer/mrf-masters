@@ -13,6 +13,7 @@ from scipy.ndimage import label as scipy_label
 from scipy.ndimage import label as scipy_label, binary_closing
 import os
 import MRzeroCore as mr0
+from cv2 import morphologyEx, MORPH_CLOSE, getStructuringElement, MORPH_ELLIPSE
 
 
 def random_multi_peak_dist(perlin_field, n_peaks=2):
@@ -64,6 +65,10 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
         # Create binary mask for this intensity range
         level_mask = (dicom_norm >= level_min) & (dicom_norm < level_max)
 
+        kernel = getStructuringElement(MORPH_ELLIPSE, (5, 5))
+        level_mask = morphologyEx(level_mask.astype(np.uint8), MORPH_CLOSE, kernel)
+        level_mask = level_mask.astype(bool)
+
         # Label connected components in this level
         labeled_regions, num_regions = scipy_label(level_mask)
 
@@ -84,9 +89,9 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
 
             # Add smooth gradient
             region_perlin = perlin[region_mask]
-            t1_map[region_mask] = t1_val + (region_perlin - 0.5) * (t1_range[1] - t1_range[0]) * 0.2
-            t2_map[region_mask] = t2_val + (region_perlin - 0.5) * (t2_range[1] - t2_range[0]) * 0.2
-            pd_map[region_mask] = pd_val + (region_perlin - 0.5) * (pd_range[1] - pd_range[0]) * 0.2
+            t1_map[region_mask] = t1_val + (region_perlin - 0.5) * (t1_range[1] - t1_range[0]) * 0.05
+            t2_map[region_mask] = t2_val + (region_perlin - 0.5) * (t2_range[1] - t2_range[0]) * 0.05
+            pd_map[region_mask] = pd_val + (region_perlin - 0.5) * (pd_range[1] - pd_range[0]) * 0.05
 
     t1_map[~abdomen_mask] = 0
     t2_map[~abdomen_mask] = 0
@@ -132,7 +137,12 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
     B1_map = cv2.resize(B1_map.real, (W, H)) + 1j * cv2.resize(B1_map.imag, (W, H))
 
     if plot_output_path:
-        fig, axes = plt.subplots(2, 5, figsize=(16, 8))
+        dicom_norm = (dicom * 255).astype(np.uint8)
+        level_ranges = [(levels[i - 1] if i > 0 else 0, levels[i]) for i in range(len(levels))] + [(levels[-1], 255)]
+        n_levels = len(level_ranges)
+        n_level_rows = (n_levels + 4) // 5  # ceil division
+
+        fig, axes = plt.subplots(2 + n_level_rows, 5, figsize=(16, 4 * (2 + n_level_rows)))
 
         # Row 0: DICOM, abdomen_mask, T1, T2, PD
         axes[0, 0].imshow(dicom, cmap='gray')
@@ -162,6 +172,15 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
         axes[1, 0].imshow(np.array(Image.open(labels_png_path)), cmap='gray')
         axes[1, 0].set_title('Ground Truth Labels')
         axes[1, 0].axis('off')
+
+        # Rows 2+: Intensity levels (5 per row)
+        for idx, (level_min, level_max) in enumerate(level_ranges):
+            row = 2 + (idx // 5)
+            col = idx % 5
+            level_mask = (dicom_norm >= level_min) & (dicom_norm < level_max)
+            axes[row, col].imshow(level_mask, cmap='gray')
+            axes[row, col].set_title(f'Level {idx}\n[{int(level_min)}-{int(level_max)}]')
+            axes[row, col].axis('off')
 
         plt.tight_layout()
         plt.savefig(plot_output_path, dpi=100)
@@ -204,13 +223,24 @@ def process_dataset(ground_dir, inphase_dir, output_dir, seed=42, plot=False):
                            plot=plot)
 
 
+
 def main():
+    # process_dataset(
+    #     r"C:\Users\perez\Desktop\data_from_local\Ground",
+    #     r"C:\Users\perez\Desktop\data_from_local\InPhase",
+    #     r"C:\Users\perez\Desktop\data_from_local\Output",
+    #     seed=42,
+    #     plot=False
+    # )
+    ground_dir = r"C:\Users\perez\Desktop\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\Ground"
+    inphase_dir = r"C:\Users\perez\Desktop\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\DICOM_anon\InPhase"
+    output_dir = r"C:\Users\perez\Desktop\abdomen_phantoms_2"
     process_dataset(
-        r"C:\Users\perez\Desktop\data_from_local\Ground",
-        r"C:\Users\perez\Desktop\data_from_local\InPhase",
-        r"C:\Users\perez\Desktop\data_from_local\Output",
+        ground_dir,
+        inphase_dir,
+        output_dir,
         seed=42,
-        plot=False
+        plot=True
     )
 
 
