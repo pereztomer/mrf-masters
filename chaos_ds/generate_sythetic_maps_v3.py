@@ -12,6 +12,7 @@ from PIL import Image
 from scipy.ndimage import label as scipy_label
 from scipy.ndimage import label as scipy_label, binary_closing
 import os
+import MRzeroCore as mr0
 
 
 def random_multi_peak_dist(perlin_field, n_peaks=2):
@@ -23,7 +24,9 @@ def random_multi_peak_dist(perlin_field, n_peaks=2):
         result += weight * np.exp(-((perlin_field - peak) ** 2) / (2 * sigma ** 2))
     return result / result.max()
 
-def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_output_path, seed=42, plot_output_path=None, plot=False):
+
+def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_output_path, seed=42,
+                       plot_output_path=None, plot=False):
     # Load DICOM
     dicom = pydicom.dcmread(dicom_path).pixel_array
     dicom = (dicom - dicom.min()) / (dicom.max() - dicom.min())
@@ -41,12 +44,12 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
         return
     os.makedirs(os.path.dirname(mat_output_path), exist_ok=True)
     os.makedirs(os.path.dirname(labels_npy_output_path), exist_ok=True)
-    os.makedirs(os.path.dirname(plot_output_path),exist_ok=True)
+    os.makedirs(os.path.dirname(plot_output_path), exist_ok=True)
     print(f"Non-black: {non_black_pct:.2f}%")
 
     # Create regions based on intensity levels
     dicom_norm = (dicom * 255).astype(np.uint8)
-    levels = np.percentile(dicom_norm[abdomen_mask], [30,60,90])
+    levels = np.percentile(dicom_norm[abdomen_mask], [30, 60, 90])
 
     t1_map = np.zeros_like(dicom)
     t2_map = np.zeros_like(dicom)
@@ -119,6 +122,14 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
             labels[key] = labels[key][min_row:max_row, min_col:max_col]
             labels[key] = np.pad(labels[key], ((pad_h, max_dim - crop_h - pad_h), (pad_w, max_dim - crop_w - pad_w)),
                                  mode='constant', constant_values=0)
+    W, H = t1_map.shape
+    obj_p = mr0.VoxelGridPhantom.brainweb(r"C:\Users\perez\Desktop\phantom\subject05.npz")
+    slice_num = 64
+    B0_map = obj_p.B0[:, :, slice_num].numpy()
+    B0_map = cv2.resize(B0_map.real, (W, H)) + 1j * cv2.resize(B0_map.imag, (W, H))
+
+    B1_map = obj_p.B1[0][:, :, slice_num].numpy()
+    B1_map = cv2.resize(B1_map.real, (W, H)) + 1j * cv2.resize(B1_map.imag, (W, H))
 
     if plot_output_path:
         fig, axes = plt.subplots(2, 5, figsize=(16, 8))
@@ -157,11 +168,13 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
         if plot:
             plt.show()
 
-    stacked = np.stack([pd_map, t1_map, t2_map, np.zeros_like(t1_map), np.zeros_like(t1_map)], axis=-1)
+    stacked = np.stack([pd_map,
+                        t1_map,
+                        t2_map,
+                        B0_map,  # index 3
+                        B1_map], axis=-1)
     savemat(mat_output_path, {'cropped_brain': stacked})
     np.save(labels_npy_output_path, labels)
-
-
 
 
 def process_dataset(ground_dir, inphase_dir, output_dir, seed=42, plot=False):
@@ -182,13 +195,14 @@ def process_dataset(ground_dir, inphase_dir, output_dir, seed=42, plot=False):
 
         dicom_path = os.path.join(inphase_dir, dicom_file)
         labels_png_path = os.path.join(ground_dir, ground_file)
-        mat_output = os.path.join(output_dir,base_name, f"{base_name}.mat")
-        npy_output = os.path.join(output_dir,base_name, f"{base_name}_labels.npy")
-        plot_output = os.path.join(output_dir,base_name, f"{base_name}_plot.png")
-
+        mat_output = os.path.join(output_dir, base_name, f"{base_name}.mat")
+        npy_output = os.path.join(output_dir, base_name, f"{base_name}_labels.npy")
+        plot_output = os.path.join(output_dir, base_name, f"{base_name}_plot.png")
 
         print(f"Processing {base_name}...")
-        create_perlin_maps(dicom_path, labels_png_path, mat_output, npy_output, seed=seed, plot_output_path=plot_output, plot=plot)
+        create_perlin_maps(dicom_path, labels_png_path, mat_output, npy_output, seed=seed, plot_output_path=plot_output,
+                           plot=plot)
+
 
 def main():
     process_dataset(
