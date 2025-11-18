@@ -6,7 +6,6 @@ from opensimplex import OpenSimplex
 import pydicom
 import matplotlib.pyplot as plt
 from skimage import measure
-from find_countor import process_image
 from read_dicom_from_dirs import extract_labels
 from PIL import Image
 from scipy.ndimage import label as scipy_label
@@ -14,6 +13,8 @@ from scipy.ndimage import label as scipy_label, binary_closing
 import os
 import MRzeroCore as mr0
 from cv2 import morphologyEx, MORPH_CLOSE, getStructuringElement, MORPH_ELLIPSE
+from skimage import io, filters, measure, morphology
+from threeD_maps_sampler import CorrelatedSampler3D
 
 
 def random_multi_peak_dist(perlin_field, n_peaks=2):
@@ -26,14 +27,17 @@ def random_multi_peak_dist(perlin_field, n_peaks=2):
     return result / result.max()
 
 
-def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_output_path, seed=42,
+def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_output_path, sampler, seed=42,
                        plot_output_path=None, plot=False):
     # Load DICOM
     dicom = pydicom.dcmread(dicom_path).pixel_array
     dicom = (dicom - dicom.min()) / (dicom.max() - dicom.min())
 
-    # Extract contours and labels
-    abdomen_mask = process_image(dicom)
+    # Extract abdomen_mask
+    threshold_value = filters.threshold_otsu(dicom)
+    binary_image = dicom > threshold_value
+    abdomen_mask = morphology.remove_small_holes(binary_image, area_threshold=2000)
+
     label_image = np.array(Image.open(labels_png_path))
     labels = extract_labels(label_image)
     labels.pop("Background", None)
@@ -50,7 +54,55 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
 
     # Create regions based on intensity levels
     dicom_norm = (dicom * 255).astype(np.uint8)
-    levels = np.percentile(dicom_norm[abdomen_mask], [30, 60, 90])
+    levels_percentiles = np.percentile(dicom_norm[abdomen_mask], [36, 75, 90])
+    levels = []
+    level_ranges = [(levels_percentiles[i - 1] if i > 0 else 0, levels_percentiles[i]) for i in
+                    range(len(levels_percentiles))] + [(levels_percentiles[-1], 255)]
+    for level_idx, (level_min, level_max) in enumerate(level_ranges):
+        level_mask = (dicom_norm >= level_min) & (dicom_norm < level_max)
+        kernel = getStructuringElement(MORPH_ELLIPSE, (7, 7))
+        level_mask = morphologyEx(level_mask.astype(np.uint8), MORPH_CLOSE, kernel)
+        level_mask = level_mask.astype(bool)
+        level_mask = level_mask & abdomen_mask
+        if not level_mask.any():
+            continue
+        levels.append(level_mask)
+
+    # Collect all regions (levels + labels)
+    all_regions = []
+
+    # # Add intensity levels
+    # for idx, level_mask in enumerate(levels):
+    #     area = np.sum(level_mask)
+    #     all_regions.append({
+    #         'mask': level_mask,
+    #         'area': area,
+    #         'type': 'level',
+    #         'name': f'Level_{idx}'
+    #     })
+
+    # Add label regions
+    for region_name, region_mask in labels.items():
+        # if region_name == "abdomen_mask":
+        #     continue
+        area = np.sum(region_mask)
+        all_regions.append({
+            'mask': region_mask,
+            'area': area,
+            'type': 'label',
+            'name': region_name
+        })
+
+    # Sort by area (largest first)
+    all_regions.sort(key=lambda x: x['area'], reverse=True)
+
+    # Get top bins from sampler
+    top_bins = sampler.get_occupied_bins_info(top_n=len(all_regions))
+
+    # Assign bins to regions
+    region_bin_mapping = {}
+    for region, bin_info in zip(all_regions, top_bins):
+        region_bin_mapping[id(region['mask'])] = bin_info
 
     t1_map = np.zeros_like(dicom)
     t2_map = np.zeros_like(dicom)
@@ -59,39 +111,26 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
     t1_range, t2_range, pd_range = (0, 4.1), (0, 1.6), (0.4, 1.0)
     noise_gen = OpenSimplex(seed=seed)
 
-    # Process each intensity level
-    level_ranges = [(levels[i - 1] if i > 0 else 0, levels[i]) for i in range(len(levels))] + [(levels[-1], 255)]
-    for level_idx, (level_min, level_max) in enumerate(level_ranges):
-        # Create binary mask for this intensity range
-        level_mask = (dicom_norm >= level_min) & (dicom_norm < level_max)
+    # Generate Perlin noise once
+    h, w = dicom.shape
+    perlin = np.array([[noise_gen.noise2(x * 0.05, y * 0.05) for x in range(w)] for y in range(h)])
+    perlin = (perlin - perlin.min()) / (perlin.max() - perlin.min() + 1e-8)
 
-        kernel = getStructuringElement(MORPH_ELLIPSE, (5, 5))
-        level_mask = morphologyEx(level_mask.astype(np.uint8), MORPH_CLOSE, kernel)
-        level_mask = level_mask.astype(bool)
+    # Process each region with assigned bin
+    for region in all_regions:
+        region_mask = region['mask']
+        bin_info = region_bin_mapping[id(region_mask)]
 
-        # Label connected components in this level
-        labeled_regions, num_regions = scipy_label(level_mask)
+        # Get base values from bin
+        t1_val = bin_info['t1_center']
+        t2_val = bin_info['t2_center']
+        pd_val = bin_info['pd_center']
 
-        # Sample Perlin per region
-        h, w = dicom.shape
-        perlin = np.array([[noise_gen.noise2(x * 0.1, y * 0.1) for x in range(w)] for y in range(h)])
-        perlin = (perlin - perlin.min()) / (perlin.max() - perlin.min() + 1e-8)
-
-        for region_id in range(1, num_regions + 1):
-            region_mask = (labeled_regions == region_id) & abdomen_mask
-            if not region_mask.any():
-                continue
-
-            # Random center value for this region
-            t1_val = t1_range[0] + np.random.rand() * (t1_range[1] - t1_range[0])
-            t2_val = t2_range[0] + np.random.rand() * (t2_range[1] - t2_range[0])
-            pd_val = pd_range[0] + np.random.rand() * (pd_range[1] - pd_range[0])
-
-            # Add smooth gradient
-            region_perlin = perlin[region_mask]
-            t1_map[region_mask] = t1_val + (region_perlin - 0.5) * (t1_range[1] - t1_range[0]) * 0.05
-            t2_map[region_mask] = t2_val + (region_perlin - 0.5) * (t2_range[1] - t2_range[0]) * 0.05
-            pd_map[region_mask] = pd_val + (region_perlin - 0.5) * (pd_range[1] - pd_range[0]) * 0.05
+        # Add smooth gradient with Perlin noise
+        region_perlin = perlin[region_mask]
+        t1_map[region_mask] = t1_val + (region_perlin - 0.5) * (t1_range[1] - t1_range[0]) * 0.05
+        t2_map[region_mask] = t2_val + (region_perlin - 0.5) * (t2_range[1] - t2_range[0]) * 0.05
+        pd_map[region_mask] = pd_val + (region_perlin - 0.5) * (pd_range[1] - pd_range[0]) * 0.05
 
     t1_map[~abdomen_mask] = 0
     t2_map[~abdomen_mask] = 0
@@ -105,7 +144,6 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
         min_row, min_col = max(0, min_row - padding), max(0, min_col - padding)
         max_row, max_col = min(h, max_row + padding), min(w, max_col + padding)
 
-        # Make square
         crop_h = max_row - min_row
         crop_w = max_col - min_col
         max_dim = max(crop_h, crop_w)
@@ -127,6 +165,12 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
             labels[key] = labels[key][min_row:max_row, min_col:max_col]
             labels[key] = np.pad(labels[key], ((pad_h, max_dim - crop_h - pad_h), (pad_w, max_dim - crop_w - pad_w)),
                                  mode='constant', constant_values=0)
+
+        for idx in range(len(levels)):
+            temp_level = levels[idx][min_row:max_row, min_col:max_col]
+            levels[idx] = np.pad(temp_level, ((pad_h, max_dim - crop_h - pad_h), (pad_w, max_dim - crop_w - pad_w)),
+                                 mode='constant', constant_values=0)
+
     W, H = t1_map.shape
     obj_p = mr0.VoxelGridPhantom.brainweb(r"C:\Users\perez\Desktop\phantom\subject05.npz")
     slice_num = 64
@@ -137,10 +181,7 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
     B1_map = cv2.resize(B1_map.real, (W, H)) + 1j * cv2.resize(B1_map.imag, (W, H))
 
     if plot_output_path:
-        dicom_norm = (dicom * 255).astype(np.uint8)
-        level_ranges = [(levels[i - 1] if i > 0 else 0, levels[i]) for i in range(len(levels))] + [(levels[-1], 255)]
-        n_levels = len(level_ranges)
-        n_level_rows = (n_levels + 4) // 5  # ceil division
+        n_level_rows = (len(levels) + 4) // 5
 
         fig, axes = plt.subplots(2 + n_level_rows, 5, figsize=(16, 4 * (2 + n_level_rows)))
 
@@ -149,7 +190,7 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
         axes[0, 0].set_title('DICOM')
         axes[0, 0].axis('off')
 
-        axes[0, 1].imshow(abdomen_mask, cmap='gray')
+        axes[0, 1].imshow(labels['abdomen_mask'], cmap='gray')
         axes[0, 1].set_title('Abdomen Mask')
         axes[0, 1].axis('off')
 
@@ -174,11 +215,10 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
         axes[1, 0].axis('off')
 
         # Rows 2+: Intensity levels (5 per row)
-        for idx, (level_min, level_max) in enumerate(level_ranges):
+        for idx, level_mask in enumerate(levels):
             row = 2 + (idx // 5)
             col = idx % 5
-            level_mask = (dicom_norm >= level_min) & (dicom_norm < level_max)
-            axes[row, col].imshow(level_mask, cmap='gray')
+            axes[row, col].imshow(level_mask.astype(np.uint8) * 255, cmap='gray')
             axes[row, col].set_title(f'Level {idx}\n[{int(level_min)}-{int(level_max)}]')
             axes[row, col].axis('off')
 
@@ -190,17 +230,16 @@ def create_perlin_maps(dicom_path, labels_png_path, mat_output_path, labels_npy_
     stacked = np.stack([pd_map,
                         t1_map,
                         t2_map,
-                        B0_map,  # index 3
+                        B0_map,
                         B1_map], axis=-1)
     savemat(mat_output_path, {'cropped_brain': stacked})
     np.save(labels_npy_output_path, labels)
 
 
-def process_dataset(ground_dir, inphase_dir, output_dir, seed=42, plot=False):
+def process_dataset(ground_dir, inphase_dir, output_dir, sampler, seed=42, plot=False):
     ground_files = sorted([f for f in os.listdir(ground_dir) if f.endswith('.png')])
 
     for ground_file in ground_files:
-        # Match DICOM by name (remove suffix if needed)
         base_name = ground_file.replace('.png', '')
         dicom_file = None
         for f in os.listdir(inphase_dir):
@@ -219,19 +258,44 @@ def process_dataset(ground_dir, inphase_dir, output_dir, seed=42, plot=False):
         plot_output = os.path.join(output_dir, base_name, f"{base_name}_plot.png")
 
         print(f"Processing {base_name}...")
-        create_perlin_maps(dicom_path, labels_png_path, mat_output, npy_output, seed=seed, plot_output_path=plot_output,
+        create_perlin_maps(dicom_path, labels_png_path, mat_output, npy_output, sampler, seed=seed,
+                           plot_output_path=plot_output,
                            plot=plot)
 
 
-
 def main():
-    # process_dataset(
-    #     r"C:\Users\perez\Desktop\data_from_local\Ground",
-    #     r"C:\Users\perez\Desktop\data_from_local\InPhase",
-    #     r"C:\Users\perez\Desktop\data_from_local\Output",
-    #     seed=42,
-    #     plot=False
-    # )
+    # Initialize sampler with brainweb data
+    print("Initializing correlated sampler from brainweb phantom...")
+    obj_p = mr0.VoxelGridPhantom.brainweb(r"C:\Users\perez\Desktop\phantom\subject05.npz")
+
+    t1_all = []
+    t2_all = []
+    pd_all = []
+
+    for slice_number in range(128):
+        images = {"T1": obj_p.T1[:, :, slice_number],
+                  "T2": obj_p.T2[:, :, slice_number],
+                  "PD": obj_p.PD[:, :, slice_number]}
+
+        brain_mask = np.abs(images['PD']) > 0
+
+        t1_slice = np.abs(images['T1'])[brain_mask]
+        t2_slice = np.abs(images['T2'])[brain_mask]
+        pd_slice = np.abs(images['PD'])[brain_mask]
+
+        t1_all.append(t1_slice)
+        t2_all.append(t2_slice)
+        pd_all.append(pd_slice)
+
+    t1_all = np.concatenate(t1_all)
+    t2_all = np.concatenate(t2_all)
+    pd_all = np.concatenate(pd_all)
+
+    sampler = CorrelatedSampler3D(t1_all, t2_all, pd_all, n_bins=15)
+    stats = sampler.get_bin_stats()
+    print(f"Sampler stats: {stats}\n")
+
+    # Process dataset
     ground_dir = r"C:\Users\perez\Desktop\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\Ground"
     inphase_dir = r"C:\Users\perez\Desktop\CHAOS_Train_Sets\Train_Sets\MR\1\T1DUAL\DICOM_anon\InPhase"
     output_dir = r"C:\Users\perez\Desktop\abdomen_phantoms_3"
@@ -239,6 +303,7 @@ def main():
         ground_dir,
         inphase_dir,
         output_dir,
+        sampler,
         seed=42,
         plot=True
     )
