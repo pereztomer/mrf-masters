@@ -15,7 +15,7 @@ def process_image(image, plot=False):
 
     # Remove small objects (noise) and fill holes
     cleaned_image = morphology.remove_small_objects(binary_image, min_size=500)
-    cleaned_image = morphology.remove_small_holes(cleaned_image, area_threshold=500)
+    cleaned_image = morphology.remove_small_holes(cleaned_image, area_threshold=50000)
 
     # Find contours (optional for visualization)
     contours = measure.find_contours(cleaned_image, level=0.8)
