@@ -6,9 +6,8 @@ import MRzeroCore as mr0
 import torch
 
 # ---------------- Load Sequence & Phantom ----------------
-seq_file = r"gre_epi_96_half.seq"#
-seq_file  =r"C:\Users\perez\PycharmProjects\epi_gre_seq\epi_gre\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_126\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_126_pe_1.seq"
-gif_path = r"C:\Users\perez\PycharmProjects\epi_gre_seq\epi_gre\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_126\seq.gif"
+seq_file = r"C:\Users\perez\PycharmProjects\epi_gre_seq\epi_gre\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_36_v3\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_36_pe_1.seq"
+gif_path = r"C:\Users\perez\PycharmProjects\epi_gre_seq\epi_gre\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_36_v3\seq.gif"
 
 seq0 = mr0.Sequence.import_file(seq_file)
 phantom_path = r"C:\Users\perez\Desktop\mrf_runs_laptop\numerical_brain_cropped.mat"
@@ -25,11 +24,30 @@ kx_ky = kspace[:, :2].cpu().numpy()
 
 # ---------------- Figure Setup ----------------
 fig, ax = plt.subplots(figsize=(8, 8))
-ax.set_xlim(kx_ky[:, 0].min() - 0.1, kx_ky[:, 0].max() + 0.1)
-ax.set_ylim(kx_ky[:, 1].min() - 0.1, kx_ky[:, 1].max() + 0.1)
+
+# Add relative padding based on data range
+kx_range = kx_ky[:, 0].max() - kx_ky[:, 0].min()
+ky_range = kx_ky[:, 1].max() - kx_ky[:, 1].min()
+padding = 0.1  # 10% padding
+
+ax.set_xlim(kx_ky[:, 0].min() - padding * kx_range,
+            kx_ky[:, 0].max() + padding * kx_range)
+ax.set_ylim(kx_ky[:, 1].min() - padding * ky_range,
+            kx_ky[:, 1].max() + padding * ky_range)
+
+# Increase tick density
+num_ticks = 17  # More ticks = denser numbers
+ax.set_xticks(np.linspace(kx_ky[:, 0].min() - padding * kx_range,
+                          kx_ky[:, 0].max() + padding * kx_range,
+                          num_ticks))
+ax.set_yticks(np.linspace(kx_ky[:, 1].min() - padding * ky_range,
+                          kx_ky[:, 1].max() + padding * ky_range,
+                          num_ticks))
+
 ax.set_xlabel('kx')
 ax.set_ylabel('ky')
 ax.set_title('k-space Trajectory Acquisition')
+ax.set_aspect('equal', adjustable='box')
 ax.grid(True, alpha=0.3)
 ax.axhline(y=0, color='k', linewidth=0.5)
 ax.axvline(x=0, color='k', linewidth=0.5)
@@ -50,11 +68,9 @@ def animate(frame):
 # ---------------- Create Animation ----------------
 anim = animation.FuncAnimation(
     fig, animate, frames=len(kx_ky),
-    interval=50, blit=False  # blit=False fixes saving issues
+    interval=25, blit=False  # interval=25 for 2x speed (was 50)
 )
 
 # ---------------- Save as GIF ----------------
-# gif_path = 'gre_epi_96_half.gif'
-anim.save(gif_path, writer='pillow', fps=20)
+anim.save(gif_path, writer='pillow', fps=40)  # fps=40 for 2x speed (was 20)
 print(f"GIF saved to {gif_path}")
-
