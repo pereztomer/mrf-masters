@@ -6,14 +6,18 @@ import MRzeroCore as mr0
 import torch
 
 # ---------------- Load Sequence & Phantom ----------------
-seq_file = r"gre_epi_96_half.seq"
+seq_file = r"gre_epi_96_half.seq"#
+seq_file  =r"C:\Users\perez\PycharmProjects\epi_gre_seq\epi_gre\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_126\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_126_pe_1.seq"
+gif_path = r"C:\Users\perez\PycharmProjects\epi_gre_seq\epi_gre\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_126\seq.gif"
+
 seq0 = mr0.Sequence.import_file(seq_file)
-obj_p = mr0.VoxelGridPhantom.load_mat("numerical_brain_cropped.mat")
+phantom_path = r"C:\Users\perez\Desktop\mrf_runs_laptop\numerical_brain_cropped.mat"
+obj_p = mr0.VoxelGridPhantom.load_mat(phantom_path)
 obj_p = obj_p.build()
 
 # Simulate sequence
 graph = mr0.compute_graph(seq0.cuda(), obj_p.cuda(), 200, 1e-3)
-signal = mr0.execute_graph(graph, seq0.cuda(), obj_p.cuda(), print_progress=True)
+# signal = mr0.execute_graph(graph, seq0.cuda(), obj_p.cuda(), print_progress=True)
 
 # Get k-space trajectory
 kspace = seq0.cuda().get_kspace()
@@ -50,7 +54,7 @@ anim = animation.FuncAnimation(
 )
 
 # ---------------- Save as GIF ----------------
-gif_path = 'gre_epi_96_half.gif'
+# gif_path = 'gre_epi_96_half.gif'
 anim.save(gif_path, writer='pillow', fps=20)
 print(f"GIF saved to {gif_path}")
 
