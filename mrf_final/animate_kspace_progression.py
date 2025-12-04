@@ -8,8 +8,8 @@ from pathlib import Path
 import subprocess
 
 # ---------------- Load Sequence ----------------
-seq_file = r"C:\Users\perez\OneDrive - Technion\masters\scans\4.12.2025\epi_gre\multi_shot_half_fourier\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_192\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_192_pe_1.seq"
-video_path = seq_file.replace('.seq', '_seq.mp4')
+seq_file = r"C:\Users\perez\OneDrive - Technion\masters\scans\4.12.2025\epi_gre\single_shot\epi_gre_flip_angle_90_slice_thickness_0.003_matrix_size_48\epi_gre_flip_angle_90_slice_thickness_0.003_res_48_pe_enabled.seq"
+video_path = seq_file.replace('.seq', '.mp4')
 seq0 = mr0.Sequence.import_file(seq_file)
 
 # Get k-space trajectory
@@ -27,6 +27,18 @@ kx_min, kx_max = kx_ky[:, 0].min(), kx_ky[:, 0].max()
 ky_min, ky_max = kx_ky[:, 1].min(), kx_ky[:, 1].max()
 kx_range = kx_max - kx_min
 ky_range = ky_max - ky_min
+
+# Handle case where ky is constant (no phase encoding)
+if ky_range == 0:
+    ky_range = kx_range if kx_range > 0 else 1.0  # Use kx_range or default to 1
+    ky_min -= ky_range / 2
+    ky_max += ky_range / 2
+
+# Handle case where kx is constant (unlikely but safe)
+if kx_range == 0:
+    kx_range = ky_range if ky_range > 0 else 1.0
+    kx_min -= kx_range / 2
+    kx_max += kx_range / 2
 
 kx_min -= padding * kx_range
 kx_max += padding * kx_range
